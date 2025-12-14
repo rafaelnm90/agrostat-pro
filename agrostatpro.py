@@ -225,7 +225,7 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
         txt_razao = formatar_numero(razao_mse)
         texto += f"- ⚖️ **Razão de Erro Quadrático Médio (MSE):** `{txt_razao}` — {razao_txt}\n"
 
-    texto += f"- 🔍 **ANOVA:** `P={txt_p}` — {sig_txt}\n"
+    texto += f"- 🔍 **ANOVA (Genótipos):** `P={txt_p}` — {sig_txt}\n"
 
     return texto
 
@@ -714,6 +714,30 @@ if arquivo:
                         txt_metrics = gerar_relatorio_metricas(anova_tab, res_conj['modelo'], col_trat, df_proc[col_resp].mean(), res_conj['p_trat'], razao)
                         st.markdown(txt_metrics)
                         
+                        # --- BOX ALERTA NO TOPO ---
+                        p_trat_val = res_conj['p_trat']
+                        
+                        # 1. Determinar Estrelas e Limite (Genótipo)
+                        if p_trat_val < 0.001: sig_stars_trat = "***"; threshold_txt_trat = "< 0.001"
+                        elif p_trat_val < 0.01: sig_stars_trat = "**"; threshold_txt_trat = "< 0.01"
+                        elif p_trat_val < 0.05: sig_stars_trat = "*"; threshold_txt_trat = "< 0.05"
+                        else: sig_stars_trat = "ns"; threshold_txt_trat = "ns"
+
+                        # 2. Formatar String Final (Genótipo)
+                        if p_trat_val < 0.001:
+                            p_texto_trat = f"P = {p_trat_val:.2e} ({threshold_txt_trat} {sig_stars_trat})"
+                        else:
+                            if p_trat_val < 0.05:
+                                p_texto_trat = f"P = {p_trat_val:.4f} ({threshold_txt_trat} {sig_stars_trat})"
+                            else:
+                                p_texto_trat = f"P = {p_trat_val:.4f} ({sig_stars_trat})"
+
+                        if p_trat_val < 0.05:
+                            st.success(f"✅ **Diferença Significativa entre Genótipos** ({p_texto_trat}). As médias dos tratamentos diferem estatisticamente.")
+                        else:
+                            st.error(f"⚠️ **ANOVA Não Significativa** ({p_texto_trat}). Não há diferença estatística entre os tratamentos (Genótipos).")
+                        
+                        
                         extras = calcular_metricas_extras(anova_tab, res_conj['modelo'], col_trat)
                         cv_conj = (np.sqrt(res_conj['mse']) / df_proc[col_resp].mean()) * 100
                         
@@ -722,7 +746,6 @@ if arquivo:
                         if "🔴" in extras['h2_class']: st.error("🚨 Herdabilidade Baixa.")
                         if "🔴" in extras['r2_class']: st.error("🚨 R² Baixo.")
                         if razao and razao > 7: st.error(f"🚨 Variâncias Heterogêneas (Razão MSE: {razao:.2f} > 7).\n\n⚠️ Isso invalida a ANOVA conjunta, mesmo que o resultado seja significativo.")
-                        if res_conj['p_trat'] >= 0.05: st.error("🚨 ANOVA Não Significativa: Não há diferença estatística entre os tratamentos.")
 
                         st.markdown("### 📊 Análise de Variância (ANOVA)")
                         st.dataframe(anova_tab)
@@ -730,45 +753,34 @@ if arquivo:
                         
                         p_int = res_conj.get('p_interacao', 1.0)
                         
-                        # --- INTERAÇÃO COM FORMATAÇÃO APERFEIÇOADA v6.48 (CORRIGIDA) ---
-                        
-                        # 1. Determinar Estrelas e Limite
-                        if p_int < 0.001:
-                            sig_stars = "***"
-                            threshold_txt = "< 0.001"
-                        elif p_int < 0.01:
-                            sig_stars = "**"
-                            threshold_txt = "< 0.01"
-                        elif p_int < 0.05:
-                            sig_stars = "*"
-                            threshold_txt = "< 0.05"
-                        else:
-                            sig_stars = "ns"
-                            threshold_txt = "ns"
+                        # --- INTERAÇÃO COM FORMATAÇÃO APERFEIÇOADA ---
+                        if p_int < 0.001: sig_stars = "***"; threshold_txt = "< 0.001"
+                        elif p_int < 0.01: sig_stars = "**"; threshold_txt = "< 0.01"
+                        elif p_int < 0.05: sig_stars = "*"; threshold_txt = "< 0.05"
+                        else: sig_stars = "ns"; threshold_txt = "ns"
 
-                        # 2. Formatar String Final (Exato + Contexto)
                         if p_int < 0.001:
-                            # Caso extremo: Notação Científica
                             p_texto_final = f"P = {p_int:.2e} ({threshold_txt} {sig_stars})"
                         else:
-                            # Caso decimal
                             if p_int < 0.05:
-                                 # Significativo: Mostra contexto
                                  p_texto_final = f"P = {p_int:.4f} ({threshold_txt} {sig_stars})"
                             else:
-                                 # Não significativo: Apenas valor e ns
                                  p_texto_final = f"P = {p_int:.4f} ({sig_stars})"
 
                         if p_int < 0.05:
-                            st.error(f"⚠️ **Houve Interação Significativa** ({p_texto_final}).\n\nO comportamento dos genótipos varia entre os locais. Recomenda-se focar na análise específica de cada ambiente nas abas abaixo.")
+                            st.error(f"⚠️ **Houve Interação Genótipo x Ambiente Significativa** ({p_texto_final}).\n\nO comportamento dos genótipos varia entre os locais. Recomenda-se focar na análise específica de cada ambiente nas abas abaixo.")
                         else:
-                            st.success(f"✅ **Interação Não Significativa** ({p_texto_final}). O comportamento dos genótipos é estável entre os locais.")
+                            st.error(f"⚠️ **Interação Genótipo x Ambiente Não Significativa** ({p_texto_final}). O comportamento dos genótipos é estável entre os locais.")
+                            
+                            if p_trat_val < 0.05:
+                                st.success(f"✅ **Diferença Significativa entre Genótipos** ({p_texto_trat}). As médias dos tratamentos diferem estatisticamente.")
+                            else:
+                                st.error(f"⚠️ **ANOVA Não Significativa** ({p_texto_trat}). Não há diferença estatística entre os tratamentos (Genótipos).")
                         
                         st.markdown("---")
                         st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
                         st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
                         
-                        # --- LÓGICA DE DIAGNÓSTICO CONJUNTA (MESMA LÓGICA BLINDADA) ---
                         log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (Conjunta)...")
                         
                         is_nan_shap = pd.isna(p_shap)
@@ -833,16 +845,41 @@ if arquivo:
                         if p_int < 0.05: st.info("Desdobramento disponível nas abas abaixo (omitido para brevidade visual nesta etapa).")
                         
                         locais_unicos = sorted(df_proc[col_local].unique())
-                        abas = st.tabs(["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Gráfico Interação"])
+                        abas = st.tabs(["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Gráfico Interação GxA"])
                         
+                        # --- ABA DE MÉDIA GERAL (MODIFICADA) ---
                         with abas[0]:
                             medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
                             reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean() 
-                            df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
-                            st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                            f_g = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Média Geral {col_resp}")
-                            st.plotly_chart(f_g, use_container_width=True)
+                            n_trats_geral = len(medias_geral)
                             
+                            # Cálculo dos testes para Média Geral
+                            df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
+                            df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, n_trats_geral)
+                            
+                            # Sub-abas dentro de Média Geral
+                            sub_t_geral1, sub_t_geral2, sub_t_geral3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
+                            
+                            with sub_t_geral1:
+                                st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
+                                st.caption(explaining_ranking(df_sk_geral, "Scott-Knott"))
+                                
+                            with sub_t_geral2:
+                                st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
+                                st.caption(explaining_ranking(df_tukey_geral, "Tukey"))
+                                st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
+                                
+                            with sub_t_geral3:
+                                f_g_sk = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Média Geral {col_resp} (Scott-Knott)")
+                                f_g_sk.update_traces(marker_color='#2E86C1')
+                                st.plotly_chart(f_g_sk, use_container_width=True)
+                                
+                                st.markdown("---")
+                                
+                                f_g_tk = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Média Geral {col_resp} (Tukey)")
+                                st.plotly_chart(f_g_tk, use_container_width=True)
+                        
+                        # --- ABAS DE LOCAIS INDIVIDUAIS ---
                         for k, loc in enumerate(locais_unicos):
                             with abas[k+1]:
                                 df_loc = df_proc[df_proc[col_local] == loc]
@@ -853,25 +890,25 @@ if arquivo:
                                     n_trats_loc = len(medias_loc)
                                     df_tukey_loc = tukey_manual_preciso(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, n_trats_loc)
                                     df_sk_loc = scott_knott(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc)
-                                    sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📈 Gráficos"])
+                                    sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
                                     with sub_t1:
-                                        st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
-                                        st.caption(explaining_ranking(df_tukey_loc, "Tukey"))
-                                    with sub_t2:
                                         st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
                                         st.caption(explaining_ranking(df_sk_loc, "Scott-Knott"))
+                                    with sub_t2:
+                                        st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
+                                        st.caption(explaining_ranking(df_tukey_loc, "Tukey"))
                                     with sub_t3:
-                                        f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Ranking {col_resp} em {loc} (Tukey)")
-                                        st.plotly_chart(f_l, use_container_width=True)
                                         f_s = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Ranking {col_resp} em {loc} (Scott-Knott)")
                                         f_s.update_traces(marker_color='#2E86C1')
                                         st.plotly_chart(f_s, use_container_width=True)
+                                        f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Ranking {col_resp} em {loc} (Tukey)")
+                                        st.plotly_chart(f_l, use_container_width=True)
                                 else:
                                     st.warning(f"Sem diferença significativa em {loc}.")
                                     
                         with abas[-1]:
                             df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
-                            f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, title=f"Interação GxE: {col_resp}")
+                            f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, title=f"Interação GxA: {col_resp}")
                             st.plotly_chart(f_i, use_container_width=True)
 
                     if analise_valida:
