@@ -84,7 +84,6 @@ def formatar_tabela_anova(anova_df):
     
     df['Sig.'] = df['P-valor'].apply(verificar_sig)
     
-    # Aplica a formatação híbrida nas colunas numéricas para exibição
     cols_numericas = ['SQ', 'QM', 'Fcalc', 'P-valor']
     for col in cols_numericas:
         if col in df.columns:
@@ -215,7 +214,6 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
     texto += f"- 📊 **Média Geral:** `{txt_media}` — Valor central dos dados.\n"
     texto += f"- ⚡ **CV (%):** `{txt_cv}%` — {cv_txt}\n"
     texto += f"- 🎯 **Acurácia Seletiva:** `{txt_ac}` — {ac_txt}\n"
-    # CORREÇÃO v6.48: Alterado para h² unicode
     texto += f"- 🧬 **Herdabilidade (h²):** `{txt_h2}` — {h2_txt}\n"
     texto += f"- 📉 **Coeficiente de Determinação (R²):** `{txt_r2}` — {r2_txt}\n"
     texto += f"- 📏 **Raiz do Erro Quadrático Médio (RMSE):** `{txt_rmse}` — Erro médio absoluto na unidade da variável.\n"
@@ -231,8 +229,6 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
 
 # --- DIAGNÓSTICO E TABELAS ---
 def gerar_tabela_diagnostico(p_shapiro, p_bartlett=None, p_levene=None):
-    # Logica de diagnóstico e formatação da tabela com proteção contra NaN
-    
     # SHAPIRO
     if pd.isna(p_shapiro):
         cond_sw, conc_sw = "---", "Ignorado (Não Calculado) ⚪"
@@ -468,7 +464,7 @@ def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=Non
     res['shapiro'] = stats.shapiro(modelo.resid)
     grupos = [g[col_resp].values for _, g in df.groupby(col_trat)]
     res['bartlett'] = stats.bartlett(*grupos)
-    res['levene'] = stats.levene(*grupos, center='median') # NOVO: LEVENE
+    res['levene'] = stats.levene(*grupos, center='median')
     
     return res
 
@@ -493,7 +489,7 @@ def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_
     res['shapiro'] = stats.shapiro(modelo.resid)
     grupos = [g[col_resp].values for _, g in df.groupby(col_trat)]
     res['bartlett'] = stats.bartlett(*grupos)
-    res['levene'] = stats.levene(*grupos, center='median') # NOVO: LEVENE
+    res['levene'] = stats.levene(*grupos, center='median')
     
     try:
         res['p_trat'] = anova.loc[f"C({col_trat})", "PR(>F)"]
@@ -508,6 +504,49 @@ def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_
 
 # --- INTERFACE PRINCIPAL ---
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
+
+# --- FUNÇÃO CSS PARA ROLAGEM DE ABAS (VERSÃO AGRESSIVA) ---
+def configurar_estilo_abas():
+    log_message("🎨 Aplicando estilos CSS ROBUSTOS para rolagem de abas...")
+    st.markdown("""
+        <style>
+            /* 1. Força o container a permitir rolagem e não quebrar linha */
+            div[data-baseweb="tab-list"] {
+                display: flex !important;
+                flex-wrap: nowrap !important;       /* Proíbe pular linha */
+                overflow-x: auto !important;        /* Habilita o scroll horizontal */
+                white-space: nowrap !important;
+                width: 100% !important;
+                padding-bottom: 8px !important;     /* Espaço para a barra de rolagem */
+            }
+            
+            /* 2. O SEGREDO: Obriga cada aba a ter seu tamanho real e proíbe encolher */
+            div[data-baseweb="tab"] {
+                flex: 0 0 auto !important;          /* 0=Não cresce, 0=NÃO ENCOLHE, auto=Tamanho do texto */
+                width: auto !important;             /* Respeita o tamanho do texto */
+                min-width: 50px !important;         /* Tamanho mínimo de segurança */
+                margin-right: 5px !important;       /* Espaçamento entre abas */
+            }
+
+            /* 3. Estilização da Barra de Rolagem (Para garantir que ela apareça) */
+            div[data-baseweb="tab-list"]::-webkit-scrollbar {
+                height: 12px !important;            /* Barra bem visível */
+            }
+            div[data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+                background-color: #888 !important;  /* Cor escura */
+                border-radius: 6px !important;
+                border: 2px solid #f1f1f1 !important;
+            }
+            div[data-baseweb="tab-list"]::-webkit-scrollbar-track {
+                background: #f1f1f1 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    log_message("✅ Estilos CSS de rolagem aplicados.")
+
+# Chama a configuração CSS logo no início
+configurar_estilo_abas()
+
 st.title("🌱 AgroStat Pro: Análises Estatísticas")
 
 # 1. SIDEBAR CONFIG
@@ -611,76 +650,128 @@ if arquivo:
                             st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
                             st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
                             
-                            # --- LÓGICA DE DIAGNÓSTICO COM "IGNORAR REAL" PARA NaN ---
-                            log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp}...")
+                            log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (INDIVIDUAL)...")
                             
+                            # --- INICIO DA NOVA LÓGICA DE DECISÃO (SUPER ÁRVORE) ---
+                            
+                            # 1. Definição dos Booleanos de Controle
                             is_nan_shap = pd.isna(p_shap)
                             is_nan_bart = pd.isna(p_bart)
                             is_nan_lev = pd.isna(p_lev)
                             
-                            # Definição dos status (True=Passou, False=Reprovou)
-                            # Se for NaN, não é True nem False (será tratado via is_nan_*)
+                            # 2. Definição de Aprovação (True/False) 
+                            # Nota: Se for NaN, consideramos False temporariamente para os booleanos de aprovação, 
+                            # mas a lógica de NaN específica tratará isso nos cenários de prioridade.
                             normal_ok = (p_shap >= 0.05) if not is_nan_shap else False
-                            bart_ok = True if is_nan_bart else (p_bart >= 0.05)
-                            lev_ok = True if is_nan_lev else (p_lev >= 0.05)
-                            
-                            # --- ÁRVORE DE DECISÃO BLINDADA (CORREÇÃO DE SHAPIRO NaN) ---
-                            
-                            # CENÁRIO: SHAPIRO É NaN
+                            bart_ok = (p_bart >= 0.05) if not is_nan_bart else False
+                            lev_ok = (p_lev >= 0.05) if not is_nan_lev else False
+
+                            # --- PRIORIDADE 1: CENÁRIOS DE ERRO NO SHAPIRO (NaN) ---
                             if is_nan_shap:
-                                log_message("⚠️ Shapiro é NaN. Ignorando-o e decidindo por Homogeneidade.")
+                                analise_valida = False
                                 
-                                # A decisão depende inteiramente de Bartlett e Levene
-                                if (not is_nan_lev and lev_ok) or (not is_nan_bart and bart_ok):
-                                    st.success("✅ Shapiro não calculado (Ignorado). Homogeneidade confirmada por Levene ou Bartlett. Pode prosseguir.")
-                                    analise_valida = True
-                                else:
-                                    st.error("🚨 Shapiro não calculado e Homogeneidade não confirmada (Testes falharam ou também são NaN).")
-                                    analise_valida = False
+                                # Cenário NaN.1: Shapiro NaN, mas Bartlett & Levene passaram
+                                if bart_ok and lev_ok:
+                                    log_message("Log: NaN.1 - Shapiro Morto, Resto Vivo")
+                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que o teste de homogenecidade (testes de Bartlett e Levene) estão aprovados conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
+                                
+                                # Cenário NaN.2: Shapiro NaN, Bartlett NaN, Levene OK
+                                elif is_nan_bart and lev_ok:
+                                    log_message("Log: NaN.2 - Shapiro/Bartlett Mortos, Levene Vivo")
+                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Levene, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
 
-                            # CENÁRIO: SHAPIRO CALCULADO E NORMAL
-                            elif normal_ok:
-                                # Lógica normal (existente)
+                                # Cenário NaN.3: Shapiro NaN, Bartlett OK, Levene NaN
+                                elif bart_ok and is_nan_lev:
+                                    log_message("Log: NaN.3 - Shapiro/Levene Mortos, Bartlett Vivo")
+                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Bartlett, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
+
+                                # Cenário NaN.4: Tudo NaN (Ou Shapiro NaN e outros não passaram/NaN)
+                                else:
+                                    log_message("Log: NaN.4 - Apagão Total")
+                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). A análise não pode ser validada, pois todos os testes tiveram valores invalidados. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
+
+                            # --- PRIORIDADE 2: CENÁRIOS DE ERRO NA HOMOGENEIDADE (NORMALIDADE OK) ---
+                            elif normal_ok and (is_nan_bart or is_nan_lev):
+                                
+                                # Cenário NaN.7: Ambos NaN (Homogeneidade impossível)
                                 if is_nan_bart and is_nan_lev:
-                                    st.success("✅ Dados Normais. Testes de homogeneidade não calculados (ignorados). Pode prosseguir.")
+                                    log_message("Log: NaN.7 - Normal OK, Homogeneidade Morta")
+                                    analise_valida = False
+                                    st.error("🚨 Erro Crítico: Os dados seguem a normalidade (Shapiro-Wilk), mas nao é possivel verificar a Homogeneidade. Ambos os testes (Bartlett e Levene) retornaram erro de cálculo (NaN). A análise foi suspensa por segurança se caso permanecer mesmo após as transformaçoes. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
+
+                                # Cenário NaN.5: Bartlett NaN, Levene OK (Levene Salva)
+                                elif is_nan_bart and lev_ok:
+                                    log_message("Log: NaN.5 - Normal OK, Bartlett NaN, Levene Salvou")
                                     analise_valida = True
-                                elif is_nan_bart and not is_nan_lev:
-                                    if lev_ok:
-                                        st.success("✅ Dados Normais. Bartlett ignorado (NaN). Levene confirmou homogeneidade.")
+                                    st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Bartlett não pôder ser calculado (NaN), mas foi ignorado pois o teste de Levene confirmou a homogeneidade das variâncias com sucesso.")
+                                
+                                # Cenário NaN.6: Levene NaN, Bartlett OK (Bartlett Salva)
+                                elif is_nan_lev and bart_ok:
+                                    log_message("Log: NaN.6 - Normal OK, Levene NaN, Bartlett Salvou")
+                                    analise_valida = True
+                                    st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Levene não pôder ser calculado (NaN), mas foi ignorado pois o teste de Bartlett confirmou a homogeneidade das variâncias com sucesso.")
+                                
+                                # Fallback: Normal OK, um NaN, e o outro FALHOU
+                                else:
+                                    log_message("Log: Normal OK, mas o único teste de homogeneidade válido FALHOU.")
+                                    analise_valida = False
+                                    st.error("🚨 Dados Normais, mas o único teste de homogeneidade calculável indicou heterogeneidade. A análise não é segura.")
+
+                            # --- PRIORIDADE 3: CENÁRIOS PADRÃO (SEM NaNs IMPEDITIVOS) ---
+                            else:
+                                if normal_ok:
+                                    # GRUPO A: DADOS NORMAIS
+                                    if bart_ok and lev_ok:
+                                        # Cenário 1
+                                        log_message("Log: Cenário 1 (S+ B+ L+)")
+                                        st.success("✅ Todos os pressupostos foram atendidos. Os dados possuem distribuição normal (normalidade; teste de Shapiro-Wilk) e as variâncias dos grupos são iguais (homocedasticidade; testes de Bartlett e de Levene). Portanto, a ANOVA é confiável.")
                                         analise_valida = True
+                                        
+                                    elif bart_ok and not lev_ok:
+                                        # Cenário 2
+                                        log_message("Log: Cenário 2 (S+ B+ L-)")
+                                        st.success("✅ Os pressupostos de Shapiro-Wilk e Bartlett foram atendidos. Ou seja, o teste de normalidade (dados com distribuição normal; Shapiro-Wilk) e o de homocedasticidade (variâncias dos grupos iguais; Bartlett) foram aprovados.")
+                                        analise_valida = True
+                                        
+                                    elif not bart_ok and lev_ok:
+                                        # Cenário 3
+                                        log_message("Log: Cenário 3 (S+ B- L+)")
+                                        st.success("✅ Os pressupostos de Shapiro-Wilk e Levene foram atendidos. Ou seja, o teste de normalidade (dados com distribuição normal; Shapiro-Wilk) e o de homocedasticidade (variâncias dos grupos iguais; Levene) foram aprovados. O Teste de Bartlett, mesmo reprovado, foi considerado um falso alarme. Devido à sua alta sensibilidade, ele pode apresentar erros, enquanto o teste de Levene é mais robusto e menos sensível.")
+                                        analise_valida = True
+                                        
                                     else:
-                                        st.error("🚨 Dados Normais. Bartlett ignorado (NaN). Levene indicou Heterogeneidade.")
+                                        # Cenário 4
+                                        log_message("Log: Cenário 4 (S+ B- L-)")
+                                        st.error("🚨 Apesar de os dados apresentarem distribuição normal (teste de Shapiro-Wilk), a variância entre os grupos é heterogênea (dispersão desigual; testes de Bartlett e de Levene). Isso compromete a precisão da ANOVA, sendo necessária a transformação dos dados.")
                                         analise_valida = False
-                                elif not is_nan_bart and is_nan_lev:
-                                    if bart_ok:
-                                        st.success("✅ Dados Normais. Bartlett confirmou homogeneidade. Levene ignorado (NaN).")
-                                        analise_valida = True
-                                    else:
-                                        st.error("🚨 Dados Normais. Bartlett indicou Heterogeneidade. Recomenda-se transformar.")
+                                        
+                                else:
+                                    # GRUPO B: DADOS NÃO NORMAIS
+                                    if bart_ok and lev_ok:
+                                        # Cenário 5
+                                        log_message("Log: Cenário 5 (S- B+ L+)")
+                                        st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas (testes de Bartlett e Levene foram aprovados), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
                                         analise_valida = False
-                                else: # Ambos calculados
-                                    if bart_ok:
-                                        st.success("✅ Pressupostos atendidos (Bartlett OK).")
-                                        analise_valida = True
-                                    elif lev_ok:
-                                        st.success("✅ Bartlett reprovou (falso alarme), mas Levene confirmou homogeneidade.")
-                                        analise_valida = True
+                                        
+                                    elif bart_ok and not lev_ok:
+                                        # Cenário 6
+                                        log_message("Log: Cenário 6 (S- B+ L-)")
+                                        st.error("🚨 Violação de Normalidade: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e também houve reprovação da homocedasticidade do teste de Levene, apesar de que o teste de Bartlett foi aprovado.Mas independente da aprovaçao de qualquer teste de homocedasticidade o teste de normalidade foi reprovado e portanto a ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
+                                        analise_valida = False
+                                        
+                                    elif not bart_ok and lev_ok:
+                                        # Cenário 7
+                                        log_message("Log: Cenário 7 (S- B- L+)")
+                                        st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas ( apenas o teste de Levene foi aprovado), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
+                                        analise_valida = False
+                                        
                                     else:
-                                        st.error("🚨 Variâncias heterogêneas confirmadas.")
+                                        # Cenário 8
+                                        log_message("Log: Cenário 8 (S- B- L-)")
+                                        st.error("🚨 Violação Crítica Total: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene foram reprovados). A ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
                                         analise_valida = False
 
-                            # CENÁRIO: SHAPIRO REPROVADO (P < 0.05)
-                            else:
-                                if is_nan_lev:
-                                    st.error("🚨 Dados NÃO Normais (Shapiro falhou). Teste de Levene não calculado (ignorado). Sem prova de homogeneidade robusta, a análise não deve prosseguir.")
-                                    analise_valida = False
-                                else:
-                                    if lev_ok:
-                                        st.success("✅ Apesar da falta de normalidade, o Levene (robusto) confirmou homogeneidade. Pode prosseguir.")
-                                        analise_valida = True
-                                    else:
-                                        st.error("🚨 Violação crítica: Dados não normais e heterogêneos (Levene falhou).")
-                                        analise_valida = False
+                            # --- FIM DA NOVA LÓGICA DE DECISÃO ---
 
                         if sig:
                             reps = df_proc.groupby(col_trat)[col_resp].count().mean()
@@ -690,10 +781,12 @@ if arquivo:
                                 df_tukey = tukey_manual_preciso(medias, res['mse'], res['df_resid'], reps, n_trats)
                                 st.dataframe(df_tukey.style.format({"Media": "{:.2f}"}))
                                 st.caption(explaining_ranking(df_tukey, "Tukey"))
+                                st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
                             with t3:
                                 df_sk = scott_knott(medias, res['mse'], res['df_resid'], reps)
                                 st.dataframe(df_sk.style.format({"Media": "{:.2f}"}))
                                 st.caption(explaining_ranking(df_sk, "Scott-Knott"))
+                                st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
                             with t4:
                                 f1 = px.bar(df_tukey.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Tukey: {col_resp}")
                                 st.plotly_chart(f1, use_container_width=True)
@@ -742,9 +835,9 @@ if arquivo:
                         cv_conj = (np.sqrt(res_conj['mse']) / df_proc[col_resp].mean()) * 100
                         
                         if cv_conj > 20: st.error(f"🚨 CV Crítico: {cv_conj:.2f}% (>20%). Dados muito dispersos.")
-                        if "🔴" in extras['ac_class']: st.error("🚨 Acurácia Baixa.")
-                        if "🔴" in extras['h2_class']: st.error("🚨 Herdabilidade Baixa.")
-                        if "🔴" in extras['r2_class']: st.error("🚨 R² Baixo.")
+                        if "🔴" in extras['ac_class']: st.error("🚨 Acurácia Baixa: Seleção genética pouco confiável.")
+                        if "🔴" in extras['h2_class']: st.error("🚨 Herdabilidade Baixa: Baixa magnitude (forte influência ambiental).")
+                        if "🔴" in extras['r2_class']: st.error("🚨 R² Baixo: O modelo explica pouco o fenômeno.")
                         if razao and razao > 7: st.error(f"🚨 Variâncias Heterogêneas (Razão MSE: {razao:.2f} > 7).\n\n⚠️ Isso invalida a ANOVA conjunta, mesmo que o resultado seja significativo.")
 
                         st.markdown("### 📊 Análise de Variância (ANOVA)")
@@ -781,135 +874,227 @@ if arquivo:
                         st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
                         st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
                         
-                        log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (Conjunta)...")
+                        log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (CONJUNTA)...")
                         
+                        # --- INICIO DA NOVA LÓGICA DE DECISÃO (SUPER ÁRVORE) ---
+                            
+                        # 1. Definição dos Booleanos de Controle
                         is_nan_shap = pd.isna(p_shap)
                         is_nan_bart = pd.isna(p_bart)
                         is_nan_lev = pd.isna(p_lev)
                         
+                        # 2. Definição de Aprovação (True/False) 
+                        # Nota: Se for NaN, consideramos False temporariamente para os booleanos de aprovação, 
+                        # mas a lógica de NaN específica tratará isso nos cenários de prioridade.
                         normal_ok = (p_shap >= 0.05) if not is_nan_shap else False
-                        bart_ok = True if is_nan_bart else (p_bart >= 0.05)
-                        lev_ok = True if is_nan_lev else (p_lev >= 0.05)
-                        
+                        bart_ok = (p_bart >= 0.05) if not is_nan_bart else False
+                        lev_ok = (p_lev >= 0.05) if not is_nan_lev else False
+
+                        # --- PRIORIDADE 1: CENÁRIOS DE ERRO NO SHAPIRO (NaN) ---
                         if is_nan_shap:
-                            log_message("⚠️ Shapiro é NaN. Ignorando-o e decidindo por Homogeneidade.")
-                            if (not is_nan_lev and lev_ok) or (not is_nan_bart and bart_ok):
-                                st.success("✅ Shapiro não calculado (Ignorado). Homogeneidade confirmada por Levene ou Bartlett. Pode prosseguir.")
-                                analise_valida = True
-                            else:
-                                st.error("🚨 Shapiro não calculado e Homogeneidade não confirmada (Testes falharam ou também são NaN).")
-                                analise_valida = False
+                            analise_valida = False
+                            
+                            # Cenário NaN.1: Shapiro NaN, mas Bartlett & Levene passaram
+                            if bart_ok and lev_ok:
+                                log_message("Log: NaN.1 - Shapiro Morto, Resto Vivo")
+                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro. Por esse motivo, não é possível verificar a normalidade dos dados, apesar de os testes de homogeneidade (Bartlett e Levene) estarem aprovados. Contudo, a análise não pode ser validada. Recomendo transformar os dados ou utilizar estatística não paramétrica.")
+                            
+                            # Cenário NaN.2: Shapiro NaN, Bartlett NaN, Levene OK
+                            elif is_nan_bart and lev_ok:
+                                log_message("Log: NaN.2 - Shapiro/Bartlett Mortos, Levene Vivo")
+                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, impedindo a verificação da distribuição dos dados, apesar de a homogeneidade ter sido confirmada pelo teste de Levene. Devido a essa falha, a análise não pode ser validada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
 
-                        elif normal_ok:
+                            # Cenário NaN.3: Shapiro NaN, Bartlett OK, Levene NaN
+                            elif bart_ok and is_nan_lev:
+                                log_message("Log: NaN.3 - Shapiro/Levene Mortos, Bartlett Vivo")
+                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, impedindo a verificação da distribuição dos dados, apesar de a homogeneidade ter sido confirmada pelo teste de Bartlett. Devido a essa falha, a análise não pode ser validada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
+
+                            # Cenário NaN.4: Tudo NaN (Ou Shapiro NaN e outros não passaram/NaN)
+                            else:
+                                log_message("Log: NaN.4 - Apagão Total")
+                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). A análise não pode ser validada, pois todos os testes apresentaram erros. Recomenda-se transformar os dados para verificar se o cálculo se torna viável ou utilizar estatística não paramétrica.")
+
+                        # --- PRIORIDADE 2: CENÁRIOS DE ERRO NA HOMOGENEIDADE (NORMALIDADE OK) ---
+                        elif normal_ok and (is_nan_bart or is_nan_lev):
+                            
+                            # Cenário NaN.7: Ambos NaN (Homogeneidade impossível)
                             if is_nan_bart and is_nan_lev:
-                                st.success("✅ Dados Normais. Testes de homogeneidade não calculados (ignorados). Pode prosseguir.")
+                                log_message("Log: NaN.7 - Normal OK, Homogeneidade Morta")
+                                analise_valida = False
+                                st.error("🚨 Erro Crítico: Os dados seguem a normalidade (Shapiro-Wilk), mas não foi possível verificar a homogeneidade, pois ambos os testes (Bartlett e Levene) retornaram erro de cálculo (NaN). A análise foi suspensa por segurança. Recomenda-se transformar os dados para tentar validar os testes; caso o erro persista, utilize a estatística não paramétrica.")
+
+                            # Cenário NaN.5: Bartlett NaN, Levene OK (Levene Salva)
+                            elif is_nan_bart and lev_ok:
+                                log_message("Log: NaN.5 - Normal OK, Bartlett NaN, Levene Salvou")
                                 analise_valida = True
-                            elif is_nan_bart and not is_nan_lev:
-                                if lev_ok:
-                                    st.success("✅ Dados Normais. Bartlett ignorado (NaN). Levene confirmou homogeneidade.")
+                                st.success("✅ Os dados seguem distribuição normal (teste de Shapiro-Wilk). A falha no cálculo do teste de Bartlett (NaN) foi desconsiderada, pois o teste de Levene confirmou a homogeneidade das variâncias com sucesso.")
+                            
+                            # Cenário NaN.6: Levene NaN, Bartlett OK (Bartlett Salva)
+                            elif is_nan_lev and bart_ok:
+                                log_message("Log: NaN.6 - Normal OK, Levene NaN, Bartlett Salvou")
+                                analise_valida = True
+                                st.success("✅ Os dados seguem distribuição normal (teste de Shapiro-Wilk). A falha no cálculo do teste de Levene (NaN) foi desconsiderada, pois o teste de Bartlett confirmou a homogeneidade das variâncias com sucesso.")
+                            
+                            # Fallback: Normal OK, um NaN, e o outro FALHOU
+                            else:
+                                log_message("Log: Normal OK, mas o único teste de homogeneidade válido FALHOU.")
+                                analise_valida = False
+                                st.error("🚨 Violação de Homogeneidade: Os dados seguem distribuição normal (teste de Shapiro-Wilk), mas o único teste de homogeneidade válido (ou teste de Bartlett ou teste de Levene) indicou heterogeneidade, reprovando a premissa. O outro teste foi desconsiderado por erro de cálculo (NaN). A análise não é segura, pois as variâncias não são homogêneas.")
+
+                        # --- PRIORIDADE 3: CENÁRIOS PADRÃO (SEM NaNs IMPEDITIVOS) ---
+                        else:
+                            if normal_ok:
+                                # GRUPO A: DADOS NORMAIS
+                                if bart_ok and lev_ok:
+                                    # Cenário 1
+                                    log_message("Log: Cenário 1 (S+ B+ L+)")
+                                    st.success("✅ Todos os pressupostos foram atendidos. Os dados seguem distribuição normal (teste de Shapiro-Wilk) e as variâncias dos grupos são homogêneas (testes de Bartlett e Levene). Portanto, a ANOVA é confiável.")
                                     analise_valida = True
+                                    
+                                elif bart_ok and not lev_ok:
+                                    # Cenário 2
+                                    log_message("Log: Cenário 2 (S+ B+ L-)")
+                                    st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Os testes de Shapiro-Wilk (distribuição normal) e Bartlett (variâncias homogêneas) foram aprovados com sucesso.")
+                                    analise_valida = True
+                                    
+                                elif not bart_ok and lev_ok:
+                                    # Cenário 3
+                                    log_message("Log: Cenário 3 (S+ B- L+)")
+                                    st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos (Shapiro-Wilk e Levene). Devido à sua alta sensibilidade, o Bartlett é propenso a rejeições indevidas, enquanto o teste de Levene demonstra maior robustez e confiabilidade neste cenário.")
+                                    analise_valida = True
+                                    
                                 else:
-                                    st.error("🚨 Dados Normais. Bartlett ignorado (NaN). Levene indicou Heterogeneidade.")
+                                    # Cenário 4
+                                    log_message("Log: Cenário 4 (S+ B- L-)")
+                                    st.error("🚨 Embora os dados sigam distribuição normal (teste de Shapiro-Wilk), as variâncias entre os grupos são heterogêneas (testes de Bartlett e Levene reprovados). A heterocedasticidade compromete a validade da ANOVA, exigindo a transformação dos dados.")
                                     analise_valida = False
-                            elif not is_nan_bart and is_nan_lev:
-                                if bart_ok:
-                                    st.success("✅ Dados Normais. Bartlett confirmou homogeneidade. Levene ignorado (NaN).")
-                                    analise_valida = True
-                                else:
-                                    st.error("🚨 Dados Normais. Bartlett indicou Heterogeneidade. Recomenda-se transformar.")
+                                    
+                            else:
+                                # GRUPO B: DADOS NÃO NORMAIS
+                                if bart_ok and lev_ok:
+                                    # Cenário 5
+                                    log_message("Log: Cenário 5 (S- B+ L+)")
+                                    st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas (testes de Bartlett e Levene aprovados), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Visto que a normalidade é um pressuposto fundamental, a ANOVA não deve ser realizada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
                                     analise_valida = False
-                            else: # Ambos calculados
-                                if bart_ok:
-                                    st.success("✅ Pressupostos atendidos (Bartlett OK).")
-                                    analise_valida = True
-                                elif lev_ok:
-                                    st.success("✅ Bartlett reprovou (falso alarme), mas Levene confirmou homogeneidade.")
-                                    analise_valida = True
+                                    
+                                elif bart_ok and not lev_ok:
+                                    # Cenário 6
+                                    log_message("Log: Cenário 6 (S- B+ L-)")
+                                    st.error("🚨 Violação de Normalidade: Os dados não seguem distribuição normal (Shapiro-Wilk reprovado) e o teste de Levene indicou heterogeneidade, embora o teste de Bartlett tenha sido aprovado. Independentemente dos resultados de homogeneidade, a reprovação na normalidade torna a ANOVA inválida. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
+                                    analise_valida = False
+                                    
+                                elif not bart_ok and lev_ok:
+                                    # Cenário 7
+                                    log_message("Log: Cenário 7 (S- B- L+)")
+                                    st.error("🚨 Violação de Normalidade: Embora as variâncias sejam consideradas homogêneas (apenas o teste de Levene foi aprovado), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Visto que a normalidade é um pressuposto fundamental, a ANOVA não deve ser realizada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
+                                    analise_valida = False
+                                    
                                 else:
-                                    st.error("🚨 Variâncias heterogêneas confirmadas.")
+                                    # Cenário 8
+                                    log_message("Log: Cenário 8 (S- B- L-)")
+                                    st.error("🚨 Violação Crítica Total: Os dados não seguem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene reprovados). A violação simultânea dos pressupostos invalida a ANOVA. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
                                     analise_valida = False
 
-                        # CENÁRIO 2: SHAPIRO REPROVADO
-                        else:
-                            if is_nan_lev:
-                                st.error("🚨 Dados NÃO Normais (Shapiro falhou). Teste de Levene não calculado (ignorado). Sem prova de homogeneidade robusta, a análise não deve prosseguir.")
-                                analise_valida = False
-                            else:
-                                if lev_ok:
-                                    st.success("✅ Apesar da falta de normalidade, o Levene (robusto) confirmou homogeneidade. Pode prosseguir.")
-                                    analise_valida = True
-                                else:
-                                    st.error("🚨 Violação crítica: Dados não normais e heterogêneos (Levene falhou).")
-                                    analise_valida = False
+                        # --- FIM DA NOVA LÓGICA DE DECISÃO ---
 
                         if p_int < 0.05: st.info("Desdobramento disponível nas abas abaixo (omitido para brevidade visual nesta etapa).")
                         
                         locais_unicos = sorted(df_proc[col_local].unique())
-                        abas = st.tabs(["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Gráfico Interação GxA"])
                         
-                        # --- ABA DE MÉDIA GERAL (MODIFICADA) ---
+                        # --- ABAS FIXAS (SEMPRE INCLUI O GRÁFICO) ---
+                        titulos_abas = ["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Gráfico Interação GxA"]
+                        abas = st.tabs(titulos_abas)
+                        
+                        # --- ABA DE MÉDIA GERAL (COM LÓGICA DE INTERAÇÃO) ---
                         with abas[0]:
-                            medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
-                            reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean() 
-                            n_trats_geral = len(medias_geral)
-                            
-                            # Cálculo dos testes para Média Geral
-                            df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
-                            df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, n_trats_geral)
-                            
-                            # Sub-abas dentro de Média Geral
-                            sub_t_geral1, sub_t_geral2, sub_t_geral3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
-                            
-                            with sub_t_geral1:
-                                st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                                st.caption(explaining_ranking(df_sk_geral, "Scott-Knott"))
+                            if p_int < 0.05:
+                                st.error("⚠️ **Alerta de Interação Significativa:** A Média Geral mascara o comportamento real, pois os genótipos mudam de ranking entre os locais.\n\n👉 **Recomendação:** Ignore esta aba e analise cada 'Local' individualmente.")
+                                box_geral = st.expander("Visualizar Média Geral assim mesmo (Não Recomendado)")
+                            else:
+                                st.success("✅ **Interação Não Significativa:** O comportamento dos genótipos é estável. Esta é a aba correta para tirar conclusões.")
+                                box_geral = st.container()
+
+                            with box_geral:
+                                medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
+                                reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean() 
+                                n_trats_geral = len(medias_geral)
                                 
-                            with sub_t_geral2:
-                                st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
-                                st.caption(explaining_ranking(df_tukey_geral, "Tukey"))
-                                st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
+                                # Cálculo dos testes para Média Geral
+                                df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
+                                df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, n_trats_geral)
                                 
-                            with sub_t_geral3:
-                                f_g_sk = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Média Geral {col_resp} (Scott-Knott)")
-                                f_g_sk.update_traces(marker_color='#2E86C1')
-                                st.plotly_chart(f_g_sk, use_container_width=True)
+                                # Sub-abas dentro de Média Geral
+                                sub_t_geral1, sub_t_geral2, sub_t_geral3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
                                 
-                                st.markdown("---")
-                                
-                                f_g_tk = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Média Geral {col_resp} (Tukey)")
-                                st.plotly_chart(f_g_tk, use_container_width=True)
+                                with sub_t_geral1:
+                                    st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
+                                    st.caption(explaining_ranking(df_sk_geral, "Scott-Knott"))
+                                    st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
+                                    
+                                with sub_t_geral2:
+                                    st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
+                                    st.caption(explaining_ranking(df_tukey_geral, "Tukey"))
+                                    st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
+                                    
+                                with sub_t_geral3:
+                                    f_g_sk = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Média Geral {col_resp} (Scott-Knott)")
+                                    f_g_sk.update_traces(marker_color='#2E86C1')
+                                    st.plotly_chart(f_g_sk, use_container_width=True)
+                                    
+                                    st.markdown("---")
+                                    
+                                    f_g_tk = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Média Geral {col_resp} (Tukey)")
+                                    st.plotly_chart(f_g_tk, use_container_width=True)
                         
-                        # --- ABAS DE LOCAIS INDIVIDUAIS ---
+                        # --- ABAS DE LOCAIS INDIVIDUAIS (COM LÓGICA DE INTERAÇÃO) ---
                         for k, loc in enumerate(locais_unicos):
                             with abas[k+1]:
-                                df_loc = df_proc[df_proc[col_local] == loc]
-                                res_loc = rodar_analise_individual(df_loc, col_trat, col_resp, delineamento, col_bloco)
-                                if res_loc['p_val'] < 0.05:
-                                    medias_loc = df_loc.groupby(col_trat)[col_resp].mean()
-                                    reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
-                                    n_trats_loc = len(medias_loc)
-                                    df_tukey_loc = tukey_manual_preciso(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, n_trats_loc)
-                                    df_sk_loc = scott_knott(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc)
-                                    sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
-                                    with sub_t1:
-                                        st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
-                                        st.caption(explaining_ranking(df_sk_loc, "Scott-Knott"))
-                                    with sub_t2:
-                                        st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
-                                        st.caption(explaining_ranking(df_tukey_loc, "Tukey"))
-                                    with sub_t3:
-                                        f_s = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Ranking {col_resp} em {loc} (Scott-Knott)")
-                                        f_s.update_traces(marker_color='#2E86C1')
-                                        st.plotly_chart(f_s, use_container_width=True)
-                                        f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Ranking {col_resp} em {loc} (Tukey)")
-                                        st.plotly_chart(f_l, use_container_width=True)
+                                if p_int >= 0.05:
+                                    st.warning(f"⚠️ **Interação Não Significativa:** Analisar o local '{loc}' isoladamente reduz o poder estatístico e pode levar a conclusões erradas (Falsos Negativos).\n\n👉 **Recomendação:** Volte para a aba 'Média Geral', pois o comportamento é estável.")
+                                    box_local = st.expander(f"Forçar análise de {loc} (Opcional)")
                                 else:
-                                    st.warning(f"Sem diferença significativa em {loc}.")
+                                    # Se a interação for significativa, o local DEVE ser analisado.
+                                    box_local = st.container()
+
+                                with box_local:
+                                    df_loc = df_proc[df_proc[col_local] == loc]
+                                    res_loc = rodar_analise_individual(df_loc, col_trat, col_resp, delineamento, col_bloco)
                                     
+                                    if res_loc['p_val'] < 0.05:
+                                        medias_loc = df_loc.groupby(col_trat)[col_resp].mean()
+                                        reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
+                                        n_trats_loc = len(medias_loc)
+                                        df_tukey_loc = tukey_manual_preciso(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, n_trats_loc)
+                                        df_sk_loc = scott_knott(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc)
+                                        sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
+                                        with sub_t1:
+                                            st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
+                                            st.caption(explaining_ranking(df_sk_loc, "Scott-Knott"))
+                                            st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
+                                        with sub_t2:
+                                            st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
+                                            st.caption(explaining_ranking(df_tukey_loc, "Tukey"))
+                                            st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
+                                        with sub_t3:
+                                            f_s = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Ranking {col_resp} em {loc} (Scott-Knott)")
+                                            f_s.update_traces(marker_color='#2E86C1')
+                                            st.plotly_chart(f_s, use_container_width=True)
+                                            f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Ranking {col_resp} em {loc} (Tukey)")
+                                            st.plotly_chart(f_l, use_container_width=True)
+                                    else:
+                                        st.warning(f"Sem diferença significativa estatística entre tratamentos em {loc}.")
+                        
+                        # --- ABA GRÁFICO (CONDICIONAL INTERNA) ---
                         with abas[-1]:
-                            df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
-                            f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, title=f"Interação GxA: {col_resp}")
-                            st.plotly_chart(f_i, use_container_width=True)
+                            if p_int < 0.05:
+                                log_message(f"📉 Gerando gráfico de interação para {col_resp}...")
+                                st.success("✅ Interação Significativa: Observe os cruzamentos das linhas. Genótipos que são bons em um local podem ser ruins em outro.")
+                                
+                                df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
+                                f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, title=f"Interação GxA: {col_resp}")
+                                st.plotly_chart(f_i, use_container_width=True)
+                            else:
+                                st.warning("⚠️ Interação Não Significativa: Não há gráfico para mostrar porque o comportamento dos genótipos é estável (sem cruzamentos estatísticos reais). Visualizar linhas cruzadas ao acaso induziria ao erro.")
 
                     if analise_valida:
                         if transf_atual != "Nenhuma":
