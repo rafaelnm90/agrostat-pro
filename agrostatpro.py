@@ -1,3 +1,6 @@
+# ==============================================================================
+# 📂 BLOCO 01: Imports, Configuração de Logs e Estado (Memória)
+# ==============================================================================
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -31,8 +34,29 @@ def reset_analise():
 def log_message(mensagem):
     if EXIBIR_LOGS:
         print(mensagem)
+# ==============================================================================
+# 🏁 FIM DO BLOCO 01
+# ==============================================================================
 
-# --- UTILITÁRIOS E FORMATAÇÃO ---
+
+# ==============================================================================
+# 📂 BLOCO 02: Limpeza, Formatação e Utilitários Básicos (CORRIGIDO)
+# ==============================================================================
+def limpar_e_converter_dados(df, col_resp):
+    """
+    Converte coluna para float, tratando vírgulas (PT-BR) e erros.
+    """
+    serie = df[col_resp].copy()
+    
+    # 1. Se for objeto/string, tenta trocar vírgula por ponto
+    if serie.dtype == 'object':
+        serie = serie.astype(str).str.replace(',', '.', regex=False)
+    
+    # 2. Converte para numérico (Coerce transforma erros em NaN)
+    serie = pd.to_numeric(serie, errors='coerce')
+    
+    return serie
+
 def get_letra_segura(n):
     try:
         ciclo = int(n) // 26
@@ -70,9 +94,25 @@ def formatar_tabela_anova(anova_df):
         
     new_index = []
     for idx in df.index:
-        nome = idx.replace('C(', '').replace(')', '').replace(':', ' x ')
+        # Converte para string
+        nome = str(idx)
+        
+        # LIMPEZA PROFUNDA (Remove artefatos do Patsy/Statsmodels)
+        # Remove 'C(' do início
+        nome = nome.replace('C(', '')
+        # Remove ', Sum)' que apareceu por causa da correção estatística
+        nome = nome.replace(', Sum)', '')
+        # Remove qualquer parêntese solto restante
+        nome = nome.replace(')', '')
+        
+        # Formatação Visual
+        nome = nome.replace(':', ' x ')
+        
+        # Tradução
         if 'Residual' in nome: nome = 'Resíduo'
+        
         new_index.append(nome)
+        
     df.index = new_index
     
     def verificar_sig(p):
@@ -96,13 +136,20 @@ def classificar_cv(cv):
     elif cv < 20: return "🟡 Médio (Boa Precisão)"
     elif cv < 30: return "🟠 Alto (Baixa Precisão)"
     else: return "🔴 Muito Alto (Inadequado)"
+# ==============================================================================
+# 🏁 FIM DO BLOCO 02
+# ==============================================================================
 
-# --- FUNÇÕES DE MÉTRICAS E INTERPRETAÇÃO ---
+
+# ==============================================================================
+# 📂 BLOCO 03: Cálculo de Métricas e Relatórios de Texto (COM RETORNO DE F)
+# ==============================================================================
 def calcular_metricas_extras(anova_df, modelo, col_trat):
-    """Calcula métricas e define classes para verificação de alertas."""
+    """Calcula métricas, define classes e retorna o valor F bruto para diagnóstico."""
     metrics = {
         'rmse': 0.0, 'r2': 0.0, 'acuracia': 0.0, 'h2': 0.0,
-        'r2_class': "", 'ac_class': "N/A", 'h2_class': "N/A"
+        'r2_class': "", 'ac_class': "N/A", 'h2_class': "N/A",
+        'f_valor_bruto': 0.0 # Novo campo para diagnóstico no App
     }
     
     try:
@@ -115,7 +162,11 @@ def calcular_metricas_extras(anova_df, modelo, col_trat):
         # Tenta buscar Fcalc numérico
         f_calc = 0
         for idx in anova_df.index:
-            if col_trat in idx and ":" not in idx: 
+            # Limpeza extra para garantir match da string
+            idx_clean = str(idx).replace("C(", "").replace(")", "")
+            
+            # Verifica se é a linha do tratamento (e não interação ou resíduo)
+            if col_trat in idx_clean and ":" not in idx_clean: 
                 try:
                     val = anova_df.loc[idx, "Fcalc"]
                     f_calc = float(val) if val != "-" else 0
@@ -123,6 +174,10 @@ def calcular_metricas_extras(anova_df, modelo, col_trat):
                     f_calc = 0
                 break
         
+        # Salva o valor bruto para usar no aviso do App
+        metrics['f_valor_bruto'] = f_calc
+
+        # Lógica da Herdabilidade/Acurácia
         if pd.isna(f_calc) or f_calc <= 1:
             metrics['acuracia'] = 0.0
             metrics['h2'] = 0.0
@@ -168,11 +223,12 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
     elif cv_val < 30: cv_txt = "🟠 Alto (Baixa Precisão)."
     else: cv_txt = "🔴 Muito Alto (Dados muito dispersos) (⚠️ Atenção)."
 
-    # 4. ACURÁCIA & H2
+    # 4. ACURÁCIA & H2 (Reutiliza lógica robusta visualmente)
     try:
         f_calc = 0
         for idx in anova_df.index:
-            if col_trat in idx and ":" not in idx:
+            idx_clean = str(idx).replace("C(", "").replace(")", "")
+            if col_trat in idx_clean and ":" not in idx_clean:
                 try:
                     val = anova_df.loc[idx, "Fcalc"]
                     f_calc = float(val) if val != "-" else 0
@@ -182,8 +238,8 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
         if f_calc <= 1:
             acuracia = 0.0
             herdabilidade = 0.0
-            ac_txt = "🔴 Crítico: Variação genética não detectada (F < 1). Seleção ineficaz (⚠️ Atenção)."
-            h2_txt = "🔴 A variância ambiental superou a genética (⚠️ Atenção)."
+            ac_txt = "🔴 Crítico: Variação genética não detectada (F <= 1). Seleção ineficaz (⚠️ Atenção)."
+            h2_txt = "🔴 Zero: A variância ambiental superou a genética (⚠️ Atenção)."
         else:
             acuracia = np.sqrt(1 - (1/f_calc))
             herdabilidade = 1 - (1/f_calc)
@@ -226,57 +282,85 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
     texto += f"- 🔍 **ANOVA (Genótipos):** `P={txt_p}` — {sig_txt}\n"
 
     return texto
+# ==============================================================================
+# 🏁 FIM DO BLOCO 03
+# ==============================================================================
 
-# --- DIAGNÓSTICO E TABELAS ---
+
+# ==============================================================================
+# 📂 BLOCO 04: Diagnóstico Visual e Transformações (Tabela Markdown)
+# ==============================================================================
 def gerar_tabela_diagnostico(p_shapiro, p_bartlett=None, p_levene=None):
-    # SHAPIRO
+    """
+    Gera uma tabela formatada exclusivamente em Markdown padrão.
+    Removemos notações LaTeX ($) para garantir compatibilidade visual limpa.
+    """
+    
+    # Cabeçalho da Tabela Markdown
+    # :--- alinhado a esquerda | :---: centralizado
+    tabela = "| Teste Estatístico | P-valor | Resultado | Conclusão |\n"
+    tabela += "| :--- | :---: | :--- | :--- |\n"
+    
+    # --- 1. SHAPIRO-WILK (Normalidade) ---
     if pd.isna(p_shapiro):
-        cond_sw, conc_sw = "---", "Ignorado (Não Calculado) ⚪"
-        txt_shap = "-"
+        p_txt = "-"
+        res_txt = "Não Calculado"
+        conc_txt = "Ignorado (Dados insuficientes ou constantes) ⚪"
     elif p_shapiro < 0.05:
-        cond_sw, conc_sw = "$P < 0.05$", "Rejeita $H_0$. **NÃO Normal** ⚠️"
-        txt_shap = formatar_numero(p_shapiro, 4)
+        p_txt = f"{p_shapiro:.4f}"
+        res_txt = "P < 0.05"
+        conc_txt = "Rejeita H0 (**NÃO Normal**) ⚠️"
     else:
-        cond_sw, conc_sw = "$P \ge 0.05$", "Não Rejeita $H_0$. **Normal** ✅"
-        txt_shap = formatar_numero(p_shapiro, 4)
+        p_txt = f"{p_shapiro:.4f}"
+        res_txt = "P >= 0.05"
+        conc_txt = "Aceita H0 (**Distribuição Normal**) ✅"
     
-    tabela = f"| Teste | P-valor | Condição | Conclusão |\n| :--- | :--- | :--- | :--- |\n"
-    tabela += f"| **Shapiro-Wilk** | ${txt_shap}$ | {cond_sw} | {conc_sw} |\n"
+    tabela += f"| **Shapiro-Wilk** (Normalidade) | {p_txt} | {res_txt} | {conc_txt} |\n"
     
-    # BARTLETT
+    # --- 2. BARTLETT (Homogeneidade) ---
     if p_bartlett is not None:
         if pd.isna(p_bartlett):
-            cond_bt, conc_bt = "---", "Ignorado (Não Calculado) ⚪"
-            txt_bart = "-"
+            p_txt = "-"
+            res_txt = "Não Calculado"
+            conc_txt = "Ignorado (Erro matemático) ⚪"
         elif p_bartlett < 0.05:
-            cond_bt, conc_bt = "$P < 0.05$", "Rejeita $H_0$. **NÃO Homogêneo** ⚠️"
-            txt_bart = formatar_numero(p_bartlett, 4)
+            p_txt = f"{p_bartlett:.4f}"
+            res_txt = "P < 0.05"
+            conc_txt = "Rejeita H0 (**Heterogêneo**) ⚠️"
         else:
-            cond_bt, conc_bt = "$P \ge 0.05$", "Não Rejeita $H_0$. **Homogêneo** ✅"
-            txt_bart = formatar_numero(p_bartlett, 4)
+            p_txt = f"{p_bartlett:.4f}"
+            res_txt = "P >= 0.05"
+            conc_txt = "Aceita H0 (**Homogêneo**) ✅"
             
-        tabela += f"| **Bartlett** | ${txt_bart}$ | {cond_bt} | {conc_bt} |\n"
+        tabela += f"| **Bartlett** (Homogeneidade) | {p_txt} | {res_txt} | {conc_txt} |\n"
 
-    # LEVENE
+    # --- 3. LEVENE (Homogeneidade) ---
     if p_levene is not None:
         if pd.isna(p_levene):
-            cond_lev, conc_lev = "---", "Ignorado (Não Calculado) ⚪"
-            txt_lev = "-"
+            p_txt = "-"
+            res_txt = "Não Calculado"
+            conc_txt = "Ignorado (Erro matemático) ⚪"
         elif p_levene < 0.05:
-            cond_lev, conc_lev = "$P < 0.05$", "Rejeita $H_0$. **NÃO Homogêneo** ⚠️"
-            txt_lev = formatar_numero(p_levene, 4)
+            p_txt = f"{p_levene:.4f}"
+            res_txt = "P < 0.05"
+            conc_txt = "Rejeita H0 (**Heterogêneo**) ⚠️"
         else:
-            cond_lev, conc_lev = "$P \ge 0.05$", "Não Rejeita $H_0$. **Homogêneo** ✅"
-            txt_lev = formatar_numero(p_levene, 4)
+            p_txt = f"{p_levene:.4f}"
+            res_txt = "P >= 0.05"
+            conc_txt = "Aceita H0 (**Homogêneo**) ✅"
             
-        tabela += f"| **Levene** | ${txt_lev}$ | {cond_lev} | {conc_lev} |\n"
+        tabela += f"| **Levene** (Homogeneidade) | {p_txt} | {res_txt} | {conc_txt} |\n"
     
     return tabela
 
 def aplicar_transformacao(df, col_resp, tipo_transformacao):
     """Aplica transformação e retorna df novo e nome da coluna nova."""
-    nova_col = col_resp
     df_copy = df.copy()
+    
+    # LIMPEZA CRÍTICA ANTES DE QUALQUER COISA
+    df_copy[col_resp] = limpar_e_converter_dados(df_copy, col_resp)
+    
+    nova_col = col_resp
     
     if tipo_transformacao == "Log10":
         nova_col = f"{col_resp}_Log"
@@ -286,9 +370,14 @@ def aplicar_transformacao(df, col_resp, tipo_transformacao):
         df_copy[nova_col] = np.sqrt(df_copy[col_resp].where(df_copy[col_resp] >= 0, 0))
         
     return df_copy, nova_col
+# ==============================================================================
+# 🏁 FIM DO BLOCO 04
+# ==============================================================================
 
-# --- MOTORES ESTATÍSTICOS ---
 
+# ==============================================================================
+# 📂 BLOCO 05: Motores Estatísticos I (Não-Paramétrico e Ranking)
+# ==============================================================================
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     try:
         df_clean = df.dropna(subset=[col_resp])
@@ -309,6 +398,44 @@ def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=Non
     except: return "Erro", None
     return "N/A", None
 
+def explaining_ranking(df_resultado, nome_teste):
+    df_sorted = df_resultado.sort_values('Media', ascending=False)
+    lider_trat = df_sorted.index[0]
+    lider_media = df_sorted.iloc[0]['Media']
+    col_letra = 'Letras' if 'Letras' in df_sorted.columns else 'Grupo'
+    letra_lider = df_sorted.iloc[0][col_letra]
+    
+    empates = []
+    for trat in df_sorted.index[1:]:
+        letra_trat = df_sorted.loc[trat, col_letra]
+        eh_igual = False
+        if nome_teste == "Scott-Knott":
+            if letra_trat == letra_lider: eh_igual = True
+        else:
+            set_lider = set(str(letra_lider)) # CORREÇÃO: Força string
+            set_trat = set(str(letra_trat))   # CORREÇÃO: Força string
+            if not set_lider.isdisjoint(set_trat): eh_igual = True
+        if eh_igual: empates.append(trat)
+            
+    texto = f"📊 **Análise de Desempenho ({nome_teste}):**\n\n"
+    texto += f"🥇 **Líder Numérico:** **{lider_trat}** (Média: {lider_media:.2f}).\n"
+    
+    if empates:
+        qtd_mostra = 5
+        # CORREÇÃO DO ERRO TYPEERROR: Usa map(str, ...) para converter inteiros em string
+        lista_empates = ", ".join(map(str, empates[:qtd_mostra])) + (f" e outros {len(empates)-qtd_mostra}" if len(empates) > qtd_mostra else "")
+        texto += f"🤝 **Empate Estatístico:** O líder não difere de: **{lista_empates}**."
+    else:
+        texto += f"🏆 **Superioridade Absoluta:** O tratamento diferiu estatisticamente de todos os demais."
+    return texto
+# ==============================================================================
+# 🏁 FIM DO BLOCO 05
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 06: Motores Estatísticos II (Algoritmos Complexos: Tukey e Scott-Knott)
+# ==============================================================================
 def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
     ep = np.sqrt(mse / n_reps)
     q_crit = studentized_range.ppf(0.95, n_trats, df_resid)
@@ -395,44 +522,27 @@ def scott_knott(means, mse, df_resid, reps):
     mapa_letras = {num: get_letra_segura(i) for i, num in enumerate(unique_grps)}
     results['Grupo'] = results['Grupo_Num'].map(mapa_letras)
     return results[['Media', 'Grupo']]
+# ==============================================================================
+# 🏁 FIM DO BLOCO 06
+# ==============================================================================
 
-def explaining_ranking(df_resultado, nome_teste):
-    df_sorted = df_resultado.sort_values('Media', ascending=False)
-    lider_trat = df_sorted.index[0]
-    lider_media = df_sorted.iloc[0]['Media']
-    col_letra = 'Letras' if 'Letras' in df_sorted.columns else 'Grupo'
-    letra_lider = df_sorted.iloc[0][col_letra]
-    
-    empates = []
-    for trat in df_sorted.index[1:]:
-        letra_trat = df_sorted.loc[trat, col_letra]
-        eh_igual = False
-        if nome_teste == "Scott-Knott":
-            if letra_trat == letra_lider: eh_igual = True
-        else:
-            set_lider = set(letra_lider)
-            set_trat = set(letra_trat)
-            if not set_lider.isdisjoint(set_trat): eh_igual = True
-        if eh_igual: empates.append(trat)
-            
-    texto = f"📊 **Análise de Desempenho ({nome_teste}):**\n\n"
-    texto += f"🥇 **Líder Numérico:** **{lider_trat}** (Média: {lider_media:.2f}).\n"
-    
-    if empates:
-        qtd_mostra = 5
-        lista_empates = ", ".join(empates[:qtd_mostra]) + (f" e outros {len(empates)-qtd_mostra}" if len(empates) > qtd_mostra else "")
-        texto += f"🤝 **Empate Estatístico:** O líder não difere de: **{lista_empates}**."
-    else:
-        texto += f"🏆 **Superioridade Absoluta:** O tratamento diferiu estatisticamente de todos os demais."
-    return texto
+
+# ==============================================================================
+# 📂 BLOCO 07: Motores Estatísticos III (Rodar Modelos OLS - CORRIGIDO)
+# ==============================================================================
+from patsy.contrasts import Sum
 
 def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
     locais = df[col_local].unique()
     mses = {}
     for loc in locais:
         df_loc = df[df[col_local] == loc]
-        if delineamento == 'DBC': formula = f"{col_resp} ~ C({col_trat}) + C({col_bloco})"
-        else: formula = f"{col_resp} ~ C({col_trat})"
+        # Correção: Uso de Contrastes Sum para garantir SQ correta no Tipo 3
+        if delineamento == 'DBC': 
+            formula = f"{col_resp} ~ C({col_trat}, Sum) + C({col_bloco}, Sum)"
+        else: 
+            formula = f"{col_resp} ~ C({col_trat}, Sum)"
+            
         try:
             modelo = ols(formula, data=df_loc).fit()
             mses[loc] = modelo.mse_resid
@@ -444,15 +554,23 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
     return razao, mses, {k: v for k, v in sorted(mses.items(), key=lambda item: item[1])}
 
 def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=None):
+    # LIMPEZA CRÍTICA ANTES DE QUALQUER CÁLCULO
+    df[col_resp] = limpar_e_converter_dados(df, col_resp)
+    
     res = {}
-    if delineamento == 'DBC': formula = f"{col_resp} ~ C({col_trat}) + C({col_bloco})"
-    else: formula = f"{col_resp} ~ C({col_trat})"
+    # Correção: Uso de Contrastes Sum para garantir SQ correta no Tipo 3
+    if delineamento == 'DBC': 
+        formula = f"{col_resp} ~ C({col_trat}, Sum) + C({col_bloco}, Sum)"
+    else: 
+        formula = f"{col_resp} ~ C({col_trat}, Sum)"
     
     try:
+        # Tenta Tipo 3 (Padrão Ouro se Contrastes estiverem certos)
         modelo = ols(formula, data=df).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
     except:
-        if delineamento == 'DBC': formula = f"{col_resp} ~ C({col_bloco}) + C({col_trat})"
+        # Fallback para Tipo 1 se der erro (matematicamente igual se balanceado)
+        if delineamento == 'DBC': formula = f"{col_resp} ~ C({col_bloco}, Sum) + C({col_trat}, Sum)"
         modelo = ols(formula, data=df).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
@@ -460,7 +578,20 @@ def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=Non
     res['modelo'] = modelo
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
-    res['p_val'] = anova.loc[f"C({col_trat})", "PR(>F)"]
+    
+    # Busca P-valor de forma segura (pode vir como C(Trat, Sum) ou só C(Trat))
+    try:
+        # Tenta buscar pelo nome exato gerado pelo Patsy
+        res['p_val'] = anova.loc[f"C({col_trat}, Sum)", "PR(>F)"]
+    except:
+        # Se falhar, busca qualquer linha que contenha o nome do tratamento e não seja interação
+        p_found = 1.0
+        for idx in anova.index:
+            if col_trat in str(idx) and ":" not in str(idx):
+                p_found = anova.loc[idx, "PR(>F)"]
+                break
+        res['p_val'] = p_found
+
     res['shapiro'] = stats.shapiro(modelo.resid)
     grupos = [g[col_resp].values for _, g in df.groupby(col_trat)]
     res['bartlett'] = stats.bartlett(*grupos)
@@ -469,10 +600,20 @@ def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=Non
     return res
 
 def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_bloco=None):
+    # LIMPEZA CRÍTICA
+    df[col_resp] = limpar_e_converter_dados(df, col_resp)
+    
     res = {}
-    termos = f"C({col_trat}) + C({col_local}) + C({col_trat}):C({col_local})"
+    # Construção da Fórmula com Interação (*) que expande para Main Effects + Interaction
+    # Usando Sum para garantir SQ Tipo 3 correta
     if delineamento == 'DBC':
-        termos += f" + C({col_bloco}):C({col_local})"
+        # Modelo: Trat + Local + Bloco(Local) + Trat:Local
+        # Simplificação Computacional: Trat + Local + Trat:Local + Bloco:Local (como erro)
+        # Nota: Patsy lida com interactions explicitas melhor com C()
+        termos = f"C({col_trat}, Sum) * C({col_local}, Sum) + C({col_bloco}, Sum):C({col_local}, Sum)"
+    else:
+        termos = f"C({col_trat}, Sum) * C({col_local}, Sum)"
+        
     formula = f"{col_resp} ~ {termos}"
     
     try:
@@ -491,49 +632,55 @@ def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_
     res['bartlett'] = stats.bartlett(*grupos)
     res['levene'] = stats.levene(*grupos, center='median')
     
-    try:
-        res['p_trat'] = anova.loc[f"C({col_trat})", "PR(>F)"]
-        res['p_interacao'] = anova.loc[f"C({col_trat}):C({col_local})", "PR(>F)"]
-    except:
-        res['p_trat'] = 0.0
-        res['p_interacao'] = 0.0
-        for idx in anova.index:
-            if f"C({col_trat})" in idx and ":" not in idx: res['p_trat'] = anova.loc[idx, "PR(>F)"]
-            if f"C({col_trat}):C({col_local})" in idx: res['p_interacao'] = anova.loc[idx, "PR(>F)"]
+    # Extração Robusta dos P-valores
+    res['p_trat'] = 1.0
+    res['p_interacao'] = 1.0
+    
+    for idx in anova.index:
+        nome = str(idx)
+        # Pega Tratamento (Main Effect)
+        if col_trat in nome and col_local not in nome and ":" not in nome:
+            res['p_trat'] = anova.loc[idx, "PR(>F)"]
+        
+        # Pega Interação (Interaction Effect)
+        if col_trat in nome and col_local in nome and ":" in nome:
+            res['p_interacao'] = anova.loc[idx, "PR(>F)"]
+            
     return res
+# ==============================================================================
+# 🏁 FIM DO BLOCO 07
+# ==============================================================================
 
-# --- INTERFACE PRINCIPAL ---
+
+# ==============================================================================
+# 📂 BLOCO 08: Interface - Setup e CSS
+# ==============================================================================
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
-# --- FUNÇÃO CSS PARA ROLAGEM DE ABAS (VERSÃO AGRESSIVA) ---
+# --- FUNÇÃO CSS PARA ROLAGEM DE ABAS ---
 def configurar_estilo_abas():
     log_message("🎨 Aplicando estilos CSS ROBUSTOS para rolagem de abas...")
     st.markdown("""
         <style>
-            /* 1. Força o container a permitir rolagem e não quebrar linha */
             div[data-baseweb="tab-list"] {
                 display: flex !important;
-                flex-wrap: nowrap !important;       /* Proíbe pular linha */
-                overflow-x: auto !important;        /* Habilita o scroll horizontal */
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
                 white-space: nowrap !important;
                 width: 100% !important;
-                padding-bottom: 8px !important;     /* Espaço para a barra de rolagem */
+                padding-bottom: 8px !important;
             }
-            
-            /* 2. O SEGREDO: Obriga cada aba a ter seu tamanho real e proíbe encolher */
             div[data-baseweb="tab"] {
-                flex: 0 0 auto !important;          /* 0=Não cresce, 0=NÃO ENCOLHE, auto=Tamanho do texto */
-                width: auto !important;             /* Respeita o tamanho do texto */
-                min-width: 50px !important;         /* Tamanho mínimo de segurança */
-                margin-right: 5px !important;       /* Espaçamento entre abas */
+                flex: 0 0 auto !important;
+                width: auto !important;
+                min-width: 50px !important;
+                margin-right: 5px !important;
             }
-
-            /* 3. Estilização da Barra de Rolagem (Para garantir que ela apareça) */
             div[data-baseweb="tab-list"]::-webkit-scrollbar {
-                height: 12px !important;            /* Barra bem visível */
+                height: 12px !important;
             }
             div[data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
-                background-color: #888 !important;  /* Cor escura */
+                background-color: #888 !important;
                 border-radius: 6px !important;
                 border: 2px solid #f1f1f1 !important;
             }
@@ -542,14 +689,18 @@ def configurar_estilo_abas():
             }
         </style>
     """, unsafe_allow_html=True)
-    log_message("✅ Estilos CSS de rolagem aplicados.")
 
-# Chama a configuração CSS logo no início
 configurar_estilo_abas()
 
 st.title("🌱 AgroStat Pro: Análises Estatísticas")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 08
+# ==============================================================================
 
-# 1. SIDEBAR CONFIG
+
+# ==============================================================================
+# 📂 BLOCO 09: Interface - Sidebar (Entrada de Dados)
+# ==============================================================================
 st.sidebar.header("📂 Configuração de Dados")
 arquivo = st.sidebar.file_uploader("Upload CSV ou Excel", type=["xlsx", "csv"], on_change=reset_analise)
 
@@ -561,7 +712,6 @@ if arquivo:
     st.sidebar.success(f"Carregado: {len(df)} linhas")
     st.sidebar.markdown("---")
     
-    # ATENÇÃO: TODOS OS INPUTS AGORA TEM O CALLBACK DE RESET
     tipo_del = st.sidebar.radio("Delineamento:", ("DIC", "DBC"), on_change=reset_analise)
     delineamento = "DIC" if "DIC" in tipo_del else "DBC"
     
@@ -570,13 +720,17 @@ if arquivo:
     OPCAO_PADRAO = "Local Único (Análise Individual)" 
     col_local = st.sidebar.selectbox("Local/Ambiente (Opcional)", [OPCAO_PADRAO] + [c for c in colunas if c != col_trat], on_change=reset_analise)
     
+    # --- SELEÇÃO DE REPETIÇÃO ---
     col_bloco = None
     if delineamento == "DBC":
-        col_bloco = st.sidebar.selectbox("Blocos", [c for c in colunas if c not in [col_trat, col_local]], on_change=reset_analise)
+        col_bloco = st.sidebar.selectbox("Blocos (Repetições)", [c for c in colunas if c not in [col_trat, col_local]], on_change=reset_analise)
+    else:
+        col_rep_dic = st.sidebar.selectbox("Repetições / ID (Para validação)", [c for c in colunas if c not in [col_trat, col_local]], on_change=reset_analise)
 
     cols_ocupadas = [col_trat, col_local]
-    if col_bloco: cols_ocupadas.append(col_bloco)
-    
+    if delineamento == "DBC": cols_ocupadas.append(col_bloco)
+    elif delineamento == "DIC" and 'col_rep_dic' in locals(): cols_ocupadas.append(col_rep_dic)
+
     lista_resps = st.sidebar.multiselect("Variáveis Resposta (Selecione 1 ou mais)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
 
     modo_analise = "INDIVIDUAL"
@@ -591,7 +745,14 @@ if arquivo:
     # --- BOTÃO PRINCIPAL ---
     if st.sidebar.button("🚀 Processar Estatística"):
         st.session_state['processando'] = True
+# ==============================================================================
+# 🏁 FIM DO BLOCO 09
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 10: Execução, Alertas Explícitos e Diagnóstico (V6 - Final)
+# ==============================================================================
     if st.session_state['processando']:
         if not lista_resps:
             st.error("⚠️ Por favor, selecione pelo menos uma Variável Resposta.")
@@ -601,7 +762,7 @@ if arquivo:
             for i, col_resp_original in enumerate(lista_resps):
                 with st.expander(f"📊 Variável: {col_resp_original}", expanded=(i==0)):
                     
-                    # TRANSFORMAÇÃO INDIVIDUAL
+                    # TRANSFORMAÇÃO
                     transf_atual = get_transformacao_atual(col_resp_original)
                     df_proc, col_resp = aplicar_transformacao(df.copy(), col_resp_original, transf_atual)
                     
@@ -610,402 +771,247 @@ if arquivo:
                     
                     st.markdown(f"### Análise de: **{col_resp}**")
                     
-                    # --- EXECUÇÃO DA ANÁLISE ---
-                    p_shap, p_bart, p_lev = 1.0, 1.0, 1.0
                     res_analysis = {}
                     
-                    analise_valida = False 
-                    
+                    # VARIÁVEIS DE CONTROLE
+                    p_shap, p_bart, p_lev = None, None, None
+                    res_model = None
+                    anova_tab = None
+                    extras = {} 
+                    p_final_trat = 1.0
+                    modo_atual_txt = ""
+
+                    # --- 1. EXECUÇÃO DOS CÁLCULOS ---
                     if modo_analise == "INDIVIDUAL":
+                        modo_atual_txt = "INDIVIDUAL"
                         res = rodar_analise_individual(df_proc, col_trat, col_resp, delineamento, col_bloco)
                         res_analysis = res
                         p_shap, p_bart, p_lev = res['shapiro'][1], res['bartlett'][1], res['levene'][1]
-                        
+                        res_model = res['modelo']
                         anova_tab = formatar_tabela_anova(res['anova'])
+                        p_final_trat = res['p_val']
+                        
+                        # Calcula métricas extras (F bruto, classes de erro)
+                        extras = calcular_metricas_extras(anova_tab, res_model, col_trat)
+                        
                         st.markdown("#### 📝 Métricas Estatísticas")
-                        txt_metrics = gerar_relatorio_metricas(anova_tab, res['modelo'], col_trat, df_proc[col_resp].mean(), res['p_val'])
+                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_trat, df_proc[col_resp].mean(), p_final_trat)
                         st.markdown(txt_metrics)
-                        
-                        extras = calcular_metricas_extras(anova_tab, res['modelo'], col_trat)
-                        cv_val = (np.sqrt(res['mse'])/df_proc[col_resp].mean())*100
-                        
-                        if cv_val > 20: st.error(f"🚨 CV Crítico: {cv_val:.2f}% (>20%). Dados muito dispersos.")
-                        if "🔴" in extras['ac_class']: st.error("🚨 Acurácia Baixa: Seleção genética pouco confiável.")
-                        if "🔴" in extras['h2_class']: st.error("🚨 Herdabilidade Baixa: Forte influência ambiental.")
-                        if "🔴" in extras['r2_class']: st.error("🚨 R² Baixo: O modelo não explica bem os dados.")
-                        
-                        # --- BOX DE SIGNIFICÂNCIA DE TRATAMENTOS v6.46 ---
-                        if res['p_val'] < 0.05:
-                            st.success("✅ Houve variação significativa entre os tratamentos.")
-                        else:
-                            st.error("⚠️ Não houve variação significativa entre os tratamentos.")
-                        
-                        sig = res['p_val'] < 0.05
-                        t1, t2, t3, t4 = st.tabs(["📋 ANOVA & Diagnóstico", "📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📈 Gráficos"])
-                        with t1:
-                            st.markdown("### 📊 Análise de Variância (ANOVA)")
-                            st.dataframe(anova_tab)
-                            st.caption("_Legenda: *** (P<0.001); ** (P<0.01); * (P<0.05); ns (Não Significativo)_")
-                            st.markdown("---")
-                            st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
-                            st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
-                            
-                            log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (INDIVIDUAL)...")
-                            
-                            # --- INICIO DA NOVA LÓGICA DE DECISÃO (SUPER ÁRVORE) ---
-                            
-                            # 1. Definição dos Booleanos de Controle
-                            is_nan_shap = pd.isna(p_shap)
-                            is_nan_bart = pd.isna(p_bart)
-                            is_nan_lev = pd.isna(p_lev)
-                            
-                            # 2. Definição de Aprovação (True/False) 
-                            # Nota: Se for NaN, consideramos False temporariamente para os booleanos de aprovação, 
-                            # mas a lógica de NaN específica tratará isso nos cenários de prioridade.
-                            normal_ok = (p_shap >= 0.05) if not is_nan_shap else False
-                            bart_ok = (p_bart >= 0.05) if not is_nan_bart else False
-                            lev_ok = (p_lev >= 0.05) if not is_nan_lev else False
-
-                            # --- PRIORIDADE 1: CENÁRIOS DE ERRO NO SHAPIRO (NaN) ---
-                            if is_nan_shap:
-                                analise_valida = False
-                                
-                                # Cenário NaN.1: Shapiro NaN, mas Bartlett & Levene passaram
-                                if bart_ok and lev_ok:
-                                    log_message("Log: NaN.1 - Shapiro Morto, Resto Vivo")
-                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que o teste de homogenecidade (testes de Bartlett e Levene) estão aprovados conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
-                                
-                                # Cenário NaN.2: Shapiro NaN, Bartlett NaN, Levene OK
-                                elif is_nan_bart and lev_ok:
-                                    log_message("Log: NaN.2 - Shapiro/Bartlett Mortos, Levene Vivo")
-                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Levene, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
-
-                                # Cenário NaN.3: Shapiro NaN, Bartlett OK, Levene NaN
-                                elif bart_ok and is_nan_lev:
-                                    log_message("Log: NaN.3 - Shapiro/Levene Mortos, Bartlett Vivo")
-                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Bartlett, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
-
-                                # Cenário NaN.4: Tudo NaN (Ou Shapiro NaN e outros não passaram/NaN)
-                                else:
-                                    log_message("Log: NaN.4 - Apagão Total")
-                                    st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). A análise não pode ser validada, pois todos os testes tiveram valores invalidados. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
-
-                            # --- PRIORIDADE 2: CENÁRIOS DE ERRO NA HOMOGENEIDADE (NORMALIDADE OK) ---
-                            elif normal_ok and (is_nan_bart or is_nan_lev):
-                                
-                                # Cenário NaN.7: Ambos NaN (Homogeneidade impossível)
-                                if is_nan_bart and is_nan_lev:
-                                    log_message("Log: NaN.7 - Normal OK, Homogeneidade Morta")
-                                    analise_valida = False
-                                    st.error("🚨 Erro Crítico: Os dados seguem a normalidade (Shapiro-Wilk), mas nao é possivel verificar a Homogeneidade. Ambos os testes (Bartlett e Levene) retornaram erro de cálculo (NaN). A análise foi suspensa por segurança se caso permanecer mesmo após as transformaçoes. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
-
-                                # Cenário NaN.5: Bartlett NaN, Levene OK (Levene Salva)
-                                elif is_nan_bart and lev_ok:
-                                    log_message("Log: NaN.5 - Normal OK, Bartlett NaN, Levene Salvou")
-                                    analise_valida = True
-                                    st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Bartlett não pôder ser calculado (NaN), mas foi ignorado pois o teste de Levene confirmou a homogeneidade das variâncias com sucesso.")
-                                
-                                # Cenário NaN.6: Levene NaN, Bartlett OK (Bartlett Salva)
-                                elif is_nan_lev and bart_ok:
-                                    log_message("Log: NaN.6 - Normal OK, Levene NaN, Bartlett Salvou")
-                                    analise_valida = True
-                                    st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Levene não pôder ser calculado (NaN), mas foi ignorado pois o teste de Bartlett confirmou a homogeneidade das variâncias com sucesso.")
-                                
-                                # Fallback: Normal OK, um NaN, e o outro FALHOU
-                                else:
-                                    log_message("Log: Normal OK, mas o único teste de homogeneidade válido FALHOU.")
-                                    analise_valida = False
-                                    st.error("🚨 Dados Normais, mas o único teste de homogeneidade calculável indicou heterogeneidade. A análise não é segura.")
-
-                            # --- PRIORIDADE 3: CENÁRIOS PADRÃO (SEM NaNs IMPEDITIVOS) ---
-                            else:
-                                if normal_ok:
-                                    # GRUPO A: DADOS NORMAIS
-                                    if bart_ok and lev_ok:
-                                        # Cenário 1
-                                        log_message("Log: Cenário 1 (S+ B+ L+)")
-                                        st.success("✅ Todos os pressupostos foram atendidos. Os dados possuem distribuição normal (normalidade; teste de Shapiro-Wilk) e as variâncias dos grupos são iguais (homocedasticidade; testes de Bartlett e de Levene). Portanto, a ANOVA é confiável.")
-                                        analise_valida = True
-                                        
-                                    elif bart_ok and not lev_ok:
-                                        # Cenário 2
-                                        log_message("Log: Cenário 2 (S+ B+ L-)")
-                                        st.success("✅ Os pressupostos de Shapiro-Wilk e Bartlett foram atendidos. Ou seja, o teste de normalidade (dados com distribuição normal; Shapiro-Wilk) e o de homocedasticidade (variâncias dos grupos iguais; Bartlett) foram aprovados.")
-                                        analise_valida = True
-                                        
-                                    elif not bart_ok and lev_ok:
-                                        # Cenário 3
-                                        log_message("Log: Cenário 3 (S+ B- L+)")
-                                        st.success("✅ Os pressupostos de Shapiro-Wilk e Levene foram atendidos. Ou seja, o teste de normalidade (dados com distribuição normal; Shapiro-Wilk) e o de homocedasticidade (variâncias dos grupos iguais; Levene) foram aprovados. O Teste de Bartlett, mesmo reprovado, foi considerado um falso alarme. Devido à sua alta sensibilidade, ele pode apresentar erros, enquanto o teste de Levene é mais robusto e menos sensível.")
-                                        analise_valida = True
-                                        
-                                    else:
-                                        # Cenário 4
-                                        log_message("Log: Cenário 4 (S+ B- L-)")
-                                        st.error("🚨 Apesar de os dados apresentarem distribuição normal (teste de Shapiro-Wilk), a variância entre os grupos é heterogênea (dispersão desigual; testes de Bartlett e de Levene). Isso compromete a precisão da ANOVA, sendo necessária a transformação dos dados.")
-                                        analise_valida = False
-                                        
-                                else:
-                                    # GRUPO B: DADOS NÃO NORMAIS
-                                    if bart_ok and lev_ok:
-                                        # Cenário 5
-                                        log_message("Log: Cenário 5 (S- B+ L+)")
-                                        st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas (testes de Bartlett e Levene foram aprovados), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
-                                        analise_valida = False
-                                        
-                                    elif bart_ok and not lev_ok:
-                                        # Cenário 6
-                                        log_message("Log: Cenário 6 (S- B+ L-)")
-                                        st.error("🚨 Violação de Normalidade: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e também houve reprovação da homocedasticidade do teste de Levene, apesar de que o teste de Bartlett foi aprovado.Mas independente da aprovaçao de qualquer teste de homocedasticidade o teste de normalidade foi reprovado e portanto a ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
-                                        analise_valida = False
-                                        
-                                    elif not bart_ok and lev_ok:
-                                        # Cenário 7
-                                        log_message("Log: Cenário 7 (S- B- L+)")
-                                        st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas ( apenas o teste de Levene foi aprovado), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
-                                        analise_valida = False
-                                        
-                                    else:
-                                        # Cenário 8
-                                        log_message("Log: Cenário 8 (S- B- L-)")
-                                        st.error("🚨 Violação Crítica Total: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene foram reprovados). A ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
-                                        analise_valida = False
-
-                            # --- FIM DA NOVA LÓGICA DE DECISÃO ---
-
-                        if sig:
-                            reps = df_proc.groupby(col_trat)[col_resp].count().mean()
-                            medias = df_proc.groupby(col_trat)[col_resp].mean()
-                            n_trats = len(medias)
-                            with t2:
-                                df_tukey = tukey_manual_preciso(medias, res['mse'], res['df_resid'], reps, n_trats)
-                                st.dataframe(df_tukey.style.format({"Media": "{:.2f}"}))
-                                st.caption(explaining_ranking(df_tukey, "Tukey"))
-                                st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
-                            with t3:
-                                df_sk = scott_knott(medias, res['mse'], res['df_resid'], reps)
-                                st.dataframe(df_sk.style.format({"Media": "{:.2f}"}))
-                                st.caption(explaining_ranking(df_sk, "Scott-Knott"))
-                                st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
-                            with t4:
-                                f1 = px.bar(df_tukey.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Tukey: {col_resp}")
-                                st.plotly_chart(f1, use_container_width=True)
-                                st.markdown("---")
-                                f2 = px.bar(df_sk.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Scott-Knott: {col_resp}")
-                                f2.update_traces(marker_color='#2E86C1')
-                                st.plotly_chart(f2, use_container_width=True)
-                        else: st.warning("ANOVA não significativa.")
 
                     else: # CONJUNTA
+                        modo_atual_txt = "CONJUNTA"
                         res_conj = rodar_analise_conjunta(df_proc, col_trat, col_resp, col_local, delineamento, col_bloco)
                         res_analysis = res_conj
                         p_shap, p_bart, p_lev = res_conj['shapiro'][1], res_conj['bartlett'][1], res_conj['levene'][1]
-                        razao, _, _ = calcular_homogeneidade(df_proc, col_trat, col_resp, col_local, col_bloco, delineamento)
+                        res_model = res_conj['modelo']
                         anova_tab = formatar_tabela_anova(res_conj['anova'])
+                        razao, _, _ = calcular_homogeneidade(df_proc, col_trat, col_resp, col_local, col_bloco, delineamento)
+                        p_final_trat = res_conj['p_trat']
                         
+                        # Calcula métricas extras
+                        extras = calcular_metricas_extras(anova_tab, res_model, col_trat)
+
                         st.markdown("#### 📝 Métricas Estatísticas")
-                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_conj['modelo'], col_trat, df_proc[col_resp].mean(), res_conj['p_trat'], razao)
+                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_trat, df_proc[col_resp].mean(), p_final_trat, razao)
                         st.markdown(txt_metrics)
                         
-                        # --- BOX ALERTA NO TOPO ---
-                        p_trat_val = res_conj['p_trat']
-                        
-                        # 1. Determinar Estrelas e Limite (Genótipo)
-                        if p_trat_val < 0.001: sig_stars_trat = "***"; threshold_txt_trat = "< 0.001"
-                        elif p_trat_val < 0.01: sig_stars_trat = "**"; threshold_txt_trat = "< 0.01"
-                        elif p_trat_val < 0.05: sig_stars_trat = "*"; threshold_txt_trat = "< 0.05"
-                        else: sig_stars_trat = "ns"; threshold_txt_trat = "ns"
+                        # Alerta específico da Conjunta (Razão MSE)
+                        if razao and razao > 7: 
+                            st.error(f"🚨 **Violação de Homogeneidade (MSE):** A razão entre o maior e menor quadrado médio residual foi {razao:.2f} (> 7). Isso invalida a análise conjunta.")
 
-                        # 2. Formatar String Final (Genótipo)
-                        if p_trat_val < 0.001:
-                            p_texto_trat = f"P = {p_trat_val:.2e} ({threshold_txt_trat} {sig_stars_trat})"
+                    # --- 2. ALERTAS EXPLÍCITOS (VERMELHOS) ---
+                    # Aqui mostramos CADA problema individualmente, como você pediu.
+                    
+                    # A) CV
+                    cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
+                    if cv_val > 20: 
+                        st.error(f"🚨 **CV Muito Alto ({cv_val:.2f}%):** Dados dispersos indicam baixa precisão experimental.")
+                    
+                    # B) Acurácia
+                    if "🔴" in extras['ac_class']:
+                        st.error("🚨 **Acurácia Baixa/Zerada:** A confiabilidade para selecionar genótipos é nula ou muito baixa.")
+
+                    # C) Herdabilidade
+                    if "🔴" in extras['h2_class']: 
+                        st.error("🚨 **Herdabilidade Baixa/Zerada:** A influência do ambiente superou a genética.")
+
+                    # D) R2
+                    if "🔴" in extras['r2_class']: 
+                        st.error(f"🚨 **R² Baixo ({extras['r2']:.2f}):** O modelo matemático não explica bem os dados.")
+
+                    # --- 3. DIAGNÓSTICO EXPLICATIVO (AZUL) ---
+                    # Aparece APENAS para explicar o fenômeno matemático dos zeros (F <= 1)
+                    f_bruto = extras.get('f_valor_bruto', 0)
+                    if f_bruto <= 1 and f_bruto != 0:
+                        st.info(f"""
+                        💡 **Nota Técnica sobre os Zeros:**
+                        Notei que Acurácia e Herdabilidade deram 0.00. Não é erro.
+                        Isso ocorreu porque o **F-calculado ({f_bruto:.2f})** foi menor ou igual a 1.
+                        Matematicamente, isso significa que a variação entre repetições (erro) foi maior que a variação entre tratamentos.
+                        """)
+
+                    # --- 4. EXIBIÇÃO DE RESULTADOS ANOVA ---
+                    # Texto P-valor Tratamento
+                    if p_final_trat < 0.001: txt_p = "< 0.001 (***)"
+                    elif p_final_trat < 0.05: txt_p = f"= {p_final_trat:.4f} (*)"
+                    else: txt_p = f"= {p_final_trat:.4f} (ns)"
+
+                    if p_final_trat < 0.05:
+                        st.success(f"✅ **Diferença Significativa:** Há diferença estatística entre os tratamentos (P {txt_p}).")
+                    else:
+                        st.error(f"⚠️ **Não Significativo:** Estatisticamente, os tratamentos são iguais (P {txt_p}).")
+
+                    st.markdown("### 📊 Análise de Variância (ANOVA)")
+                    st.dataframe(anova_tab)
+
+                    if modo_atual_txt == "CONJUNTA":
+                         p_int = res_conj.get('p_interacao', 1.0)
+                         if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).** O comportamento muda entre locais.")
+                         else: st.success(f"✅ **Interação GxA Não Significativa (P={p_int:.4f}).** Comportamento estável.")
+
+                    st.markdown("---")
+                    st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
+                    st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
+                    
+                    log_message(f"🚀 Iniciando verificação de pressupostos PADRONIZADA para {col_resp}...")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 10
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 11: A "Árvore de Decisão Universal" (Lógica de Pressupostos)
+# ==============================================================================
+                    # Esta lógica agora se aplica tanto para DIC, DBC Individual quanto Conjunta.
+                    # As variáveis p_shap, p_bart, p_lev foram definidas no Bloco 10.
+
+                    is_nan_shap = pd.isna(p_shap)
+                    is_nan_bart = pd.isna(p_bart)
+                    is_nan_lev = pd.isna(p_lev)
+                    
+                    normal_ok = (p_shap >= 0.05) if not is_nan_shap else False
+                    bart_ok = (p_bart >= 0.05) if not is_nan_bart else False
+                    lev_ok = (p_lev >= 0.05) if not is_nan_lev else False
+
+                    if is_nan_shap:
+                        analise_valida = False
+                        if bart_ok and lev_ok:
+                            log_message("Log: NaN.1"); st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que o teste de homogenecidade (testes de Bartlett e Levene) estão aprovados conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
+                        elif is_nan_bart and lev_ok:
+                            log_message("Log: NaN.2"); st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Levene, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
+                        elif bart_ok and is_nan_lev:
+                            log_message("Log: NaN.3"); st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso em específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, e por esse motivo não tem como verificar a normalidade dos dados, apesar que a homogenecidade está aprovada com o teste de Bartlett, conforme desejamos. Porém, mesmo assim a análise não pode ser validada. Recomendo Transformar os dados ou usar a estatística não-paramétrica.")
                         else:
-                            if p_trat_val < 0.05:
-                                p_texto_trat = f"P = {p_trat_val:.4f} ({threshold_txt_trat} {sig_stars_trat})"
-                            else:
-                                p_texto_trat = f"P = {p_trat_val:.4f} ({sig_stars_trat})"
+                            log_message("Log: NaN.4"); st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). A análise não pode ser validada, pois todos os testes tiveram valores invalidados. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
 
-                        if p_trat_val < 0.05:
-                            st.success(f"✅ **Diferença Significativa entre Genótipos** ({p_texto_trat}). As médias dos tratamentos diferem estatisticamente.")
+                    elif normal_ok and (is_nan_bart or is_nan_lev):
+                        if is_nan_bart and is_nan_lev:
+                            log_message("Log: NaN.7"); analise_valida = False; st.error("🚨 Erro Crítico: Os dados seguem a normalidade (Shapiro-Wilk), mas nao é possivel verificar a Homogeneidade. Ambos os testes (Bartlett e Levene) retornaram erro de cálculo (NaN). A análise foi suspensa por segurança se caso permanecer mesmo após as transformaçoes. Recomendo Transformar os dados , para verificar se algum teste fica válido, ou entao usar a estatística não-paramétrica.")
+                        elif is_nan_bart and lev_ok:
+                            log_message("Log: NaN.5"); analise_valida = True; st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Bartlett não pôder ser calculado (NaN), mas foi ignorado pois o teste de Levene confirmou a homogeneidade das variâncias com sucesso.")
+                        elif is_nan_lev and bart_ok:
+                            log_message("Log: NaN.6"); analise_valida = True; st.success("✅ Os Dados segeum normalidade (teste de Shapiro-Wilk). Apesar do teste de Levene não pôder ser calculado (NaN), mas foi ignorado pois o teste de Bartlett confirmou a homogeneidade das variâncias com sucesso.")
                         else:
-                            st.error(f"⚠️ **ANOVA Não Significativa** ({p_texto_trat}). Não há diferença estatística entre os tratamentos (Genótipos).")
-                        
-                        
-                        extras = calcular_metricas_extras(anova_tab, res_conj['modelo'], col_trat)
-                        cv_conj = (np.sqrt(res_conj['mse']) / df_proc[col_resp].mean()) * 100
-                        
-                        if cv_conj > 20: st.error(f"🚨 CV Crítico: {cv_conj:.2f}% (>20%). Dados muito dispersos.")
-                        if "🔴" in extras['ac_class']: st.error("🚨 Acurácia Baixa: Seleção genética pouco confiável.")
-                        if "🔴" in extras['h2_class']: st.error("🚨 Herdabilidade Baixa: Baixa magnitude (forte influência ambiental).")
-                        if "🔴" in extras['r2_class']: st.error("🚨 R² Baixo: O modelo explica pouco o fenômeno.")
-                        if razao and razao > 7: st.error(f"🚨 Variâncias Heterogêneas (Razão MSE: {razao:.2f} > 7).\n\n⚠️ Isso invalida a ANOVA conjunta, mesmo que o resultado seja significativo.")
+                            log_message("Log: Normal OK, um NaN falhou"); analise_valida = False; st.error("🚨 Violação de Homogeneidade: Os dados seguem distribuição normal (teste de Shapiro-Wilk), mas o único teste de homogeneidade válido indicou heterogeneidade. A análise não é segura.")
 
-                        st.markdown("### 📊 Análise de Variância (ANOVA)")
-                        st.dataframe(anova_tab)
-                        st.caption("_Legenda: *** (P<0.001); ** (P<0.01); * (P<0.05); ns (Não Significativo)_")
-                        
-                        p_int = res_conj.get('p_interacao', 1.0)
-                        
-                        # --- INTERAÇÃO COM FORMATAÇÃO APERFEIÇOADA ---
-                        if p_int < 0.001: sig_stars = "***"; threshold_txt = "< 0.001"
-                        elif p_int < 0.01: sig_stars = "**"; threshold_txt = "< 0.01"
-                        elif p_int < 0.05: sig_stars = "*"; threshold_txt = "< 0.05"
-                        else: sig_stars = "ns"; threshold_txt = "ns"
-
-                        if p_int < 0.001:
-                            p_texto_final = f"P = {p_int:.2e} ({threshold_txt} {sig_stars})"
-                        else:
-                            if p_int < 0.05:
-                                 p_texto_final = f"P = {p_int:.4f} ({threshold_txt} {sig_stars})"
-                            else:
-                                 p_texto_final = f"P = {p_int:.4f} ({sig_stars})"
-
-                        if p_int < 0.05:
-                            st.error(f"⚠️ **Houve Interação Genótipo x Ambiente Significativa** ({p_texto_final}).\n\nO comportamento dos genótipos varia entre os locais. Recomenda-se focar na análise específica de cada ambiente nas abas abaixo.")
-                        else:
-                            st.error(f"⚠️ **Interação Genótipo x Ambiente Não Significativa** ({p_texto_final}). O comportamento dos genótipos é estável entre os locais.")
-                            
-                            if p_trat_val < 0.05:
-                                st.success(f"✅ **Diferença Significativa entre Genótipos** ({p_texto_trat}). As médias dos tratamentos diferem estatisticamente.")
-                            else:
-                                st.error(f"⚠️ **ANOVA Não Significativa** ({p_texto_trat}). Não há diferença estatística entre os tratamentos (Genótipos).")
-                        
-                        st.markdown("---")
-                        st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
-                        st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
-                        
-                        log_message(f"🚀 Iniciando verificação de pressupostos para {col_resp} (CONJUNTA)...")
-                        
-                        # --- INICIO DA NOVA LÓGICA DE DECISÃO (SUPER ÁRVORE) ---
-                            
-                        # 1. Definição dos Booleanos de Controle
-                        is_nan_shap = pd.isna(p_shap)
-                        is_nan_bart = pd.isna(p_bart)
-                        is_nan_lev = pd.isna(p_lev)
-                        
-                        # 2. Definição de Aprovação (True/False) 
-                        # Nota: Se for NaN, consideramos False temporariamente para os booleanos de aprovação, 
-                        # mas a lógica de NaN específica tratará isso nos cenários de prioridade.
-                        normal_ok = (p_shap >= 0.05) if not is_nan_shap else False
-                        bart_ok = (p_bart >= 0.05) if not is_nan_bart else False
-                        lev_ok = (p_lev >= 0.05) if not is_nan_lev else False
-
-                        # --- PRIORIDADE 1: CENÁRIOS DE ERRO NO SHAPIRO (NaN) ---
-                        if is_nan_shap:
-                            analise_valida = False
-                            
-                            # Cenário NaN.1: Shapiro NaN, mas Bartlett & Levene passaram
+                    else:
+                        if normal_ok:
                             if bart_ok and lev_ok:
-                                log_message("Log: NaN.1 - Shapiro Morto, Resto Vivo")
-                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro. Por esse motivo, não é possível verificar a normalidade dos dados, apesar de os testes de homogeneidade (Bartlett e Levene) estarem aprovados. Contudo, a análise não pode ser validada. Recomendo transformar os dados ou utilizar estatística não paramétrica.")
-                            
-                            # Cenário NaN.2: Shapiro NaN, Bartlett NaN, Levene OK
-                            elif is_nan_bart and lev_ok:
-                                log_message("Log: NaN.2 - Shapiro/Bartlett Mortos, Levene Vivo")
-                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, impedindo a verificação da distribuição dos dados, apesar de a homogeneidade ter sido confirmada pelo teste de Levene. Devido a essa falha, a análise não pode ser validada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-
-                            # Cenário NaN.3: Shapiro NaN, Bartlett OK, Levene NaN
-                            elif bart_ok and is_nan_lev:
-                                log_message("Log: NaN.3 - Shapiro/Levene Mortos, Bartlett Vivo")
-                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). Neste caso específico, o teste de Shapiro-Wilk (teste de normalidade) apresentou erro, impedindo a verificação da distribuição dos dados, apesar de a homogeneidade ter sido confirmada pelo teste de Bartlett. Devido a essa falha, a análise não pode ser validada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-
-                            # Cenário NaN.4: Tudo NaN (Ou Shapiro NaN e outros não passaram/NaN)
-                            else:
-                                log_message("Log: NaN.4 - Apagão Total")
-                                st.error("🚨 Erro de Cálculo nos Pressupostos: Não foi possível calcular os testes estatísticos (retorno NaN). Isso geralmente ocorre quando há dados insuficientes ou variância zero (todos os valores iguais). A análise não pode ser validada, pois todos os testes apresentaram erros. Recomenda-se transformar os dados para verificar se o cálculo se torna viável ou utilizar estatística não paramétrica.")
-
-                        # --- PRIORIDADE 2: CENÁRIOS DE ERRO NA HOMOGENEIDADE (NORMALIDADE OK) ---
-                        elif normal_ok and (is_nan_bart or is_nan_lev):
-                            
-                            # Cenário NaN.7: Ambos NaN (Homogeneidade impossível)
-                            if is_nan_bart and is_nan_lev:
-                                log_message("Log: NaN.7 - Normal OK, Homogeneidade Morta")
-                                analise_valida = False
-                                st.error("🚨 Erro Crítico: Os dados seguem a normalidade (Shapiro-Wilk), mas não foi possível verificar a homogeneidade, pois ambos os testes (Bartlett e Levene) retornaram erro de cálculo (NaN). A análise foi suspensa por segurança. Recomenda-se transformar os dados para tentar validar os testes; caso o erro persista, utilize a estatística não paramétrica.")
-
-                            # Cenário NaN.5: Bartlett NaN, Levene OK (Levene Salva)
-                            elif is_nan_bart and lev_ok:
-                                log_message("Log: NaN.5 - Normal OK, Bartlett NaN, Levene Salvou")
+                                st.success("Todos os pressupostos foram atendidos. Os dados possuem distribuição normal (normalidade; teste de Shapiro-Wilk) e possuem variâncias dos seus grupos iguais (homocedasticidade; testes de Bartlett e de Levene). Pode confiar na ANOVA.")
                                 analise_valida = True
-                                st.success("✅ Os dados seguem distribuição normal (teste de Shapiro-Wilk). A falha no cálculo do teste de Bartlett (NaN) foi desconsiderada, pois o teste de Levene confirmou a homogeneidade das variâncias com sucesso.")
-                            
-                            # Cenário NaN.6: Levene NaN, Bartlett OK (Bartlett Salva)
-                            elif is_nan_lev and bart_ok:
-                                log_message("Log: NaN.6 - Normal OK, Levene NaN, Bartlett Salvou")
+                            elif bart_ok and not lev_ok:
+                                st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Os testes de Shapiro-Wilk e Bartlett foram aprovados.")
                                 analise_valida = True
-                                st.success("✅ Os dados seguem distribuição normal (teste de Shapiro-Wilk). A falha no cálculo do teste de Levene (NaN) foi desconsiderada, pois o teste de Bartlett confirmou a homogeneidade das variâncias com sucesso.")
-                            
-                            # Fallback: Normal OK, um NaN, e o outro FALHOU
+                            elif not bart_ok and lev_ok:
+                                st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Levene confirmou a homogeneidade.")
+                                analise_valida = True
                             else:
-                                log_message("Log: Normal OK, mas o único teste de homogeneidade válido FALHOU.")
+                                st.error("🚨 Embora os dados sigam distribuição normal, as variâncias são heterogêneas. Transforme os dados.")
                                 analise_valida = False
-                                st.error("🚨 Violação de Homogeneidade: Os dados seguem distribuição normal (teste de Shapiro-Wilk), mas o único teste de homogeneidade válido (ou teste de Bartlett ou teste de Levene) indicou heterogeneidade, reprovando a premissa. O outro teste foi desconsiderado por erro de cálculo (NaN). A análise não é segura, pois as variâncias não são homogêneas.")
-
-                        # --- PRIORIDADE 3: CENÁRIOS PADRÃO (SEM NaNs IMPEDITIVOS) ---
                         else:
-                            if normal_ok:
-                                # GRUPO A: DADOS NORMAIS
-                                if bart_ok and lev_ok:
-                                    # Cenário 1
-                                    log_message("Log: Cenário 1 (S+ B+ L+)")
-                                    st.success("✅ Todos os pressupostos foram atendidos. Os dados seguem distribuição normal (teste de Shapiro-Wilk) e as variâncias dos grupos são homogêneas (testes de Bartlett e Levene). Portanto, a ANOVA é confiável.")
-                                    analise_valida = True
-                                    
-                                elif bart_ok and not lev_ok:
-                                    # Cenário 2
-                                    log_message("Log: Cenário 2 (S+ B+ L-)")
-                                    st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Os testes de Shapiro-Wilk (distribuição normal) e Bartlett (variâncias homogêneas) foram aprovados com sucesso.")
-                                    analise_valida = True
-                                    
-                                elif not bart_ok and lev_ok:
-                                    # Cenário 3
-                                    log_message("Log: Cenário 3 (S+ B- L+)")
-                                    st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos (Shapiro-Wilk e Levene). Devido à sua alta sensibilidade, o Bartlett é propenso a rejeições indevidas, enquanto o teste de Levene demonstra maior robustez e confiabilidade neste cenário.")
-                                    analise_valida = True
-                                    
-                                else:
-                                    # Cenário 4
-                                    log_message("Log: Cenário 4 (S+ B- L-)")
-                                    st.error("🚨 Embora os dados sigam distribuição normal (teste de Shapiro-Wilk), as variâncias entre os grupos são heterogêneas (testes de Bartlett e Levene reprovados). A heterocedasticidade compromete a validade da ANOVA, exigindo a transformação dos dados.")
-                                    analise_valida = False
-                                    
+                            if bart_ok and lev_ok:
+                                # Cenário 5
+                                st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas (testes de Bartlett e Levene foram aprovados), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
+                                analise_valida = False
+                            elif bart_ok and not lev_ok:
+                                # Cenário 6
+                                st.error("🚨 Violação de Normalidade: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e também houve reprovação da homocedasticidade do teste de Levene, apesar de que o teste de Bartlett foi aprovado.Mas independente da aprovaçao de qualquer teste de homocedasticidade o teste de normalidade foi reprovado e portanto a ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
+                                analise_valida = False
+                            elif not bart_ok and lev_ok:
+                                # Cenário 7
+                                st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas ( apenas o teste de Levene foi aprovado), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Como a normalidade é um pré-requisito obrigatório, a ANOVA não deve ser realizada sem antes tentar a transformação dos dados. Transforme os dados ou use estatística não-paramétrica.")
+                                analise_valida = False
                             else:
-                                # GRUPO B: DADOS NÃO NORMAIS
-                                if bart_ok and lev_ok:
-                                    # Cenário 5
-                                    log_message("Log: Cenário 5 (S- B+ L+)")
-                                    st.error("🚨 Violação de Normalidade: Embora as variâncias sejam homogêneas (testes de Bartlett e Levene aprovados), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Visto que a normalidade é um pressuposto fundamental, a ANOVA não deve ser realizada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-                                    analise_valida = False
-                                    
-                                elif bart_ok and not lev_ok:
-                                    # Cenário 6
-                                    log_message("Log: Cenário 6 (S- B+ L-)")
-                                    st.error("🚨 Violação de Normalidade: Os dados não seguem distribuição normal (Shapiro-Wilk reprovado) e o teste de Levene indicou heterogeneidade, embora o teste de Bartlett tenha sido aprovado. Independentemente dos resultados de homogeneidade, a reprovação na normalidade torna a ANOVA inválida. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-                                    analise_valida = False
-                                    
-                                elif not bart_ok and lev_ok:
-                                    # Cenário 7
-                                    log_message("Log: Cenário 7 (S- B- L+)")
-                                    st.error("🚨 Violação de Normalidade: Embora as variâncias sejam consideradas homogêneas (apenas o teste de Levene foi aprovado), os dados não seguem distribuição normal (Shapiro-Wilk reprovado). Visto que a normalidade é um pressuposto fundamental, a ANOVA não deve ser realizada. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-                                    analise_valida = False
-                                    
-                                else:
-                                    # Cenário 8
-                                    log_message("Log: Cenário 8 (S- B- L-)")
-                                    st.error("🚨 Violação Crítica Total: Os dados não seguem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene reprovados). A violação simultânea dos pressupostos invalida a ANOVA. Recomenda-se transformar os dados ou utilizar estatística não paramétrica.")
-                                    analise_valida = False
+                                # Cenário 8
+                                st.error("🚨 Violação Crítica Total: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene foram reprovados). A ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
+                                analise_valida = False
+# ==============================================================================
+# 🏁 FIM DO BLOCO 11
+# ==============================================================================
 
-                        # --- FIM DA NOVA LÓGICA DE DECISÃO ---
 
+# ==============================================================================
+# 📂 BLOCO 12: Visualização, Testes de Médias e Gráficos
+# ==============================================================================
+                    # Este bloco ocorre LOGO APÓS a validação dos pressupostos.
+                    # Ele é responsável por mostrar o "filé mignon": As médias e os gráficos.
+
+                    # ----------------------------------------------------------
+                    # CENÁRIO A: ANÁLISE INDIVIDUAL (DIC ou DBC Local Único)
+                    # ----------------------------------------------------------
+                    if modo_analise == "INDIVIDUAL":
+                        # 1. Preparação dos Dados
+                        medias_ind = df_proc.groupby(col_trat)[col_resp].mean()
+                        reps_ind = df_proc.groupby(col_trat)[col_resp].count().mean()
+                        n_trats_ind = len(medias_ind)
+                        
+                        # 2. Cálculos dos Testes de Médias
+                        # Nota: Mesmo que a ANOVA falhe, calculamos para exibir (com aviso se necessário)
+                        df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
+                        df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind)
+
+                        # 3. Criação das Abas
+                        t_tukey, t_sk, t_graf = st.tabs(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📈 Gráficos"])
+                        
+                        with t_tukey:
+                            st.markdown("### 📦 Teste de Tukey")
+                            st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
+                            
+                            # Só exibe a interpretação se a ANOVA foi significativa OU se o usuário quiser ver
+                            if res['p_val'] < 0.05:
+                                st.caption(explaining_ranking(df_tukey_ind, "Tukey"))
+                            else:
+                                st.warning("⚠️ Como a ANOVA não foi significativa (P >= 0.05), estatisticamente não há diferenças. As letras aqui são meramente ilustrativas.")
+
+                        with t_sk:
+                            st.markdown("### 📦 Teste de Scott-Knott")
+                            st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
+                            if res['p_val'] < 0.05:
+                                st.caption(explaining_ranking(df_sk_ind, "Scott-Knott"))
+                            else:
+                                st.warning("⚠️ Como a ANOVA não foi significativa, o agrupamento pode não refletir diferenças reais.")
+
+                        with t_graf:
+                            st.markdown("### 📈 Gráficos de Médias")
+                            f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Médias - Tukey ({col_resp})")
+                            st.plotly_chart(f_tk, use_container_width=True)
+                            
+                            st.markdown("---")
+                            f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Médias - Scott-Knott ({col_resp})")
+                            f_sk.update_traces(marker_color='#2E86C1')
+                            st.plotly_chart(f_sk, use_container_width=True)
+
+                    # ----------------------------------------------------------
+                    # CENÁRIO B: ANÁLISE CONJUNTA (Múltiplos Locais)
+                    # ----------------------------------------------------------
+                    else:
                         if p_int < 0.05: st.info("Desdobramento disponível nas abas abaixo (omitido para brevidade visual nesta etapa).")
                         
                         locais_unicos = sorted(df_proc[col_local].unique())
-                        
-                        # --- ABAS FIXAS (SEMPRE INCLUI O GRÁFICO) ---
                         titulos_abas = ["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Gráfico Interação GxA"]
                         abas = st.tabs(titulos_abas)
                         
-                        # --- ABA DE MÉDIA GERAL (COM LÓGICA DE INTERAÇÃO) ---
+                        # --- ABA 1: MÉDIA GERAL ---
                         with abas[0]:
                             if p_int < 0.05:
                                 st.error("⚠️ **Alerta de Interação Significativa:** A Média Geral mascara o comportamento real, pois os genótipos mudam de ranking entre os locais.\n\n👉 **Recomendação:** Ignore esta aba e analise cada 'Local' individualmente.")
@@ -1019,62 +1025,52 @@ if arquivo:
                                 reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean() 
                                 n_trats_geral = len(medias_geral)
                                 
-                                # Cálculo dos testes para Média Geral
                                 df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
                                 df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, n_trats_geral)
                                 
-                                # Sub-abas dentro de Média Geral
-                                sub_t_geral1, sub_t_geral2, sub_t_geral3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
+                                sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Scott-Knott", "📦 Tukey", "📈 Gráficos"])
                                 
-                                with sub_t_geral1:
+                                with sub_t1:
                                     st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
                                     st.caption(explaining_ranking(df_sk_geral, "Scott-Knott"))
-                                    st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
-                                    
-                                with sub_t_geral2:
+                                with sub_t2:
                                     st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
                                     st.caption(explaining_ranking(df_tukey_geral, "Tukey"))
-                                    st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
-                                    
-                                with sub_t_geral3:
+                                with sub_t3:
                                     f_g_sk = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Média Geral {col_resp} (Scott-Knott)")
                                     f_g_sk.update_traces(marker_color='#2E86C1')
                                     st.plotly_chart(f_g_sk, use_container_width=True)
-                                    
-                                    st.markdown("---")
-                                    
-                                    f_g_tk = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Média Geral {col_resp} (Tukey)")
-                                    st.plotly_chart(f_g_tk, use_container_width=True)
-                        
-                        # --- ABAS DE LOCAIS INDIVIDUAIS (COM LÓGICA DE INTERAÇÃO) ---
+
+                        # --- ABAS DE LOCAIS INDIVIDUAIS (LOOP) ---
                         for k, loc in enumerate(locais_unicos):
                             with abas[k+1]:
                                 if p_int >= 0.05:
-                                    st.warning(f"⚠️ **Interação Não Significativa:** Analisar o local '{loc}' isoladamente reduz o poder estatístico e pode levar a conclusões erradas (Falsos Negativos).\n\n👉 **Recomendação:** Volte para a aba 'Média Geral', pois o comportamento é estável.")
+                                    st.warning(f"⚠️ **Interação Não Significativa:** Analisar o local '{loc}' isoladamente reduz o poder estatístico.\n\n👉 **Recomendação:** Volte para a aba 'Média Geral'.")
                                     box_local = st.expander(f"Forçar análise de {loc} (Opcional)")
                                 else:
-                                    # Se a interação for significativa, o local DEVE ser analisado.
                                     box_local = st.container()
 
                                 with box_local:
+                                    # Recorta o DF para o local
                                     df_loc = df_proc[df_proc[col_local] == loc]
+                                    # Roda ANOVA Individual para pegar o MSE específico do local
                                     res_loc = rodar_analise_individual(df_loc, col_trat, col_resp, delineamento, col_bloco)
                                     
                                     if res_loc['p_val'] < 0.05:
                                         medias_loc = df_loc.groupby(col_trat)[col_resp].mean()
                                         reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
                                         n_trats_loc = len(medias_loc)
+                                        
                                         df_tukey_loc = tukey_manual_preciso(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, n_trats_loc)
                                         df_sk_loc = scott_knott(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc)
-                                        sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Teste de Scott-Knott", "📦 Teste de Tukey", "📈 Gráficos"])
+                                        
+                                        sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Scott-Knott", "📦 Tukey", "📈 Gráficos"])
                                         with sub_t1:
                                             st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
                                             st.caption(explaining_ranking(df_sk_loc, "Scott-Knott"))
-                                            st.warning("⚠️ Nota: Se o Scott-Knott não diferenciou grupos, é porque o erro experimental superou a diferença entre as médias.")
                                         with sub_t2:
                                             st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
                                             st.caption(explaining_ranking(df_tukey_loc, "Tukey"))
-                                            st.warning("⚠️ Nota: Se o Tukey não diferenciou letras, é porque o erro experimental superou a diferença entre as médias.")
                                         with sub_t3:
                                             f_s = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', title=f"Ranking {col_resp} em {loc} (Scott-Knott)")
                                             f_s.update_traces(marker_color='#2E86C1')
@@ -1082,20 +1078,26 @@ if arquivo:
                                             f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras', title=f"Ranking {col_resp} em {loc} (Tukey)")
                                             st.plotly_chart(f_l, use_container_width=True)
                                     else:
-                                        st.warning(f"Sem diferença significativa estatística entre tratamentos em {loc}.")
+                                        st.warning(f"Sem diferença significativa estatística entre tratamentos em {loc} (P > 0.05).")
                         
-                        # --- ABA GRÁFICO (CONDICIONAL INTERNA) ---
+                        # --- ABA FINAL: GRÁFICO DE INTERAÇÃO ---
                         with abas[-1]:
                             if p_int < 0.05:
                                 log_message(f"📉 Gerando gráfico de interação para {col_resp}...")
-                                st.success("✅ Interação Significativa: Observe os cruzamentos das linhas. Genótipos que são bons em um local podem ser ruins em outro.")
-                                
+                                st.success("✅ Interação Significativa: Observe os cruzamentos das linhas.")
                                 df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
                                 f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, title=f"Interação GxA: {col_resp}")
                                 st.plotly_chart(f_i, use_container_width=True)
                             else:
-                                st.warning("⚠️ Interação Não Significativa: Não há gráfico para mostrar porque o comportamento dos genótipos é estável (sem cruzamentos estatísticos reais). Visualizar linhas cruzadas ao acaso induziria ao erro.")
+                                st.warning("⚠️ Interação Não Significativa: Não há gráfico para mostrar.")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 12
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 13: Lógica de Fallback (Botões de Erro) e Encerramento
+# ==============================================================================
                     if analise_valida:
                         if transf_atual != "Nenhuma":
                             st.markdown("---"); st.markdown("### 🛡️ Solução Final: Análise Paramétrica (ANOVA)")
@@ -1104,7 +1106,6 @@ if arquivo:
                                 set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
                     else:
                         st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO GRAVE: ANOVA INVÁLIDA")
-                        # CORREÇÃO v6.48: Espaço e quebra visual
                         st.markdown("""
                         Como os dados não seguem a **Normalidade** e/ou **Homogeneidade** de forma crítica, a média e o desvio padrão perdem o sentido.
                         **NÃO USE A ANOVA (Teste F)** para tomar decisões, pois ela pode apresentar resultados falsos (falso positivo ou negativo).
@@ -1118,47 +1119,35 @@ if arquivo:
                             col_btn1, col_btn2 = st.columns([1, 4])
                             with col_btn1:
                                 if st.button("🧪 Tentar Log10", key=f"btn_log_{col_resp_original}"):
-                                    set_transformacao(col_resp_original, "Log10")
-                                    st.rerun()
-                            with col_btn2:
-                                st.caption("Clique para aplicar transformação Logarítmica apenas nesta variável.")
+                                    set_transformacao(col_resp_original, "Log10"); st.rerun()
+                            with col_btn2: st.caption("Clique para aplicar transformação Logarítmica apenas nesta variável.")
 
                         elif transf_atual == "Log10":
                             st.warning(f"A transformação **Log10** não resolveu o problema.")
                             col_btn1, col_btn2 = st.columns([1, 4])
                             with col_btn1:
                                 if st.button("🌱 Tentar Raiz Quadrada", key=f"btn_sqrt_{col_resp_original}"):
-                                    set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)")
-                                    st.rerun()
+                                    set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)"); st.rerun()
                             if st.button("Voltar ao Original", key=f"reset_log_{col_resp_original}"):
-                                set_transformacao(col_resp_original, "Nenhuma")
-                                st.rerun()
+                                set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
                         elif transf_atual == "Raiz Quadrada (SQRT)":
                             st.warning(f"A transformação **Raiz Quadrada** também não resolveu.")
                             st.markdown("### 🛡️ Solução Final: Estatística Não-Paramétrica")
-                            
                             key_np = f"show_np_{col_resp_original}"
                             if key_np not in st.session_state: st.session_state[key_np] = False
                             
                             if not st.session_state[key_np]:
                                 if st.button("🛡️ Rodar Estatística Não-Paramétrica", key=f"btn_run_np_{col_resp_original}"):
-                                    st.session_state[key_np] = True
-                                    st.rerun()
+                                    st.session_state[key_np] = True; st.rerun()
                             else:
                                 nome_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
                                 if p_np is not None:
                                     st.success(f"Resultado do Teste de **{nome_np}**:")
-                                    
-                                    # LÓGICA DE COR E MENSAGEM DO P-VALOR
                                     if p_np < 0.05:
-                                        # Significativo (Verde)
                                         st.metric(label="P-valor Não-Paramétrico", value=f"{p_np:.4f}", delta="↑ Significativo (Diferença Real)", delta_color="normal")
                                     else:
-                                        # Não Significativo (Vermelho)
                                         st.metric(label="P-valor Não-Paramétrico", value=f"{p_np:.4f}", delta="↓ Não Significativo (Iguais)", delta_color="inverse")
-                                        
-                                        # --- NOVO: ALERTA EDUCATIVO (STOP) ---
                                         st.error(f"""
                                         🚨 **Não houve variação significativa entre os tratamentos.** Aceita-se a Hipótese Nula ($H_0$).
                                         
@@ -1171,32 +1160,19 @@ if arquivo:
                                         _"Para a variável analisada, o teste de {nome_np} (aplicado devido à violação dos pressupostos da ANOVA) não detectou diferença significativa (p = {p_np:.4f}). Portanto, todos os genótipos apresentaram desempenho estatisticamente semelhante."_
                                         """)
 
-                                    # --- GUIA DE SOBREVIVÊNCIA E DADOS (EDUCACIONAL) ---
-                                    # CORREÇÃO: Removida indentação para evitar bloco de código cinza
                                     st.markdown("---")
                                     st.markdown("### 💡 Guia de Interpretação: Análise de Dados")
-                                    
                                     msg_guia_intro = "**Seus dados são válidos, apenas a 'régua' mudou.**\n\n1. **A Média morreu:** Em dados não-normais, use a **Mediana** e **Quartis**.\n2. **O Gráfico:** Use o **Boxplot** abaixo para visualizar a distribuição real."
-                                    
-                                    if p_np >= 0.05:
-                                        msg_guia_conclusao = "\n3. **Conclusão:** Use a tabela e o gráfico abaixo para demonstrar que as medianas são visualmente próximas ou se sobrepõem."
-                                    else:
-                                        msg_guia_conclusao = "\n3. **Conclusão:** Como houve diferença (P < 0.05), observe na tabela quem tem a maior Mediana para definir o superior."
-                                        
+                                    if p_np >= 0.05: msg_guia_conclusao = "\n3. **Conclusão:** Use a tabela e o gráfico abaixo para demonstrar que as medianas são visualmente próximas ou se sobrepõem."
+                                    else: msg_guia_conclusao = "\n3. **Conclusão:** Como houve diferença (P < 0.05), observe na tabela quem tem a maior Mediana para definir o superior."
                                     st.info(msg_guia_intro + msg_guia_conclusao)
                                     
                                     st.markdown("### 📊 Dados para Relatório (Medianas e Postos)")
-                                    
-                                    # Cálculo das estatísticas robustas
                                     df_desc = df_proc.groupby(col_trat)[col_resp].agg(
-                                        n='count',
-                                        Mediana='median',
-                                        Q1=lambda x: x.quantile(0.25),
-                                        Q3=lambda x: x.quantile(0.75),
-                                        Min='min',
-                                        Max='max'
+                                        n='count', Mediana='median',
+                                        Q1=lambda x: x.quantile(0.25), Q3=lambda x: x.quantile(0.75),
+                                        Min='min', Max='max'
                                     ).sort_values('Mediana', ascending=False)
-                                    
                                     st.dataframe(df_desc.style.format("{:.2f}"))
                                     st.caption("Use esta tabela para descrever seus resultados no artigo/trabalho.")
                                     
@@ -1204,16 +1180,15 @@ if arquivo:
                                     fig_box = px.box(df_proc, x=col_trat, y=col_resp, points="all", title=f"Distribuição Real: {col_resp}")
                                     st.plotly_chart(fig_box, use_container_width=True)
 
-                                else:
-                                    st.error("Não foi possível calcular o teste não-paramétrico (verifique dados faltantes ou delineamento).")
+                                else: st.error("Não foi possível calcular o teste não-paramétrico (verifique dados faltantes ou delineamento).")
                                 
                                 if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
-                                    st.session_state[key_np] = False
-                                    st.rerun()
+                                    st.session_state[key_np] = False; st.rerun()
                             
                             if st.button("Voltar ao Original", key=f"reset_sqrt_{col_resp_original}"):
-                                set_transformacao(col_resp_original, "Nenhuma")
-                                st.rerun()
+                                set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
-else:
-    st.info("👈 Faça upload do arquivo para começar.")
+else: st.info("👈 Faça upload do arquivo para começar.")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 13
+# ==============================================================================
