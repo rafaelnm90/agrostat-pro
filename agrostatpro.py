@@ -987,13 +987,13 @@ if arquivo:
                     else:
                         if normal_ok:
                             if bart_ok and lev_ok:
-                                st.success("Todos os pressupostos foram atendidos. Os dados possuem distribuição normal (normalidade; teste de Shapiro-Wilk) e possuem variâncias dos seus grupos iguais (homocedasticidade; testes de Bartlett e de Levene). Pode confiar na ANOVA.")
+                                st.success("✅ Todos os pressupostos foram atendidos. Os dados possuem distribuição normal (normalidade; teste de Shapiro-Wilk) e possuem variâncias dos seus grupos iguais (homocedasticidade; testes de Bartlett e de Levene). Pode confiar na ANOVA.")
                                 analise_valida = True
                             elif bart_ok and not lev_ok:
-                                st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Os testes de Shapiro-Wilk e Bartlett foram aprovados.")
+                                st.success("✅ Os pressupostos de normalidade (Shapiro-Wilk) e o teste de homogeneidade foram atendidos (Bartlett). Os testes de Shapiro-Wilk e Bartlett foram aprovados.")
                                 analise_valida = True
                             elif not bart_ok and lev_ok:
-                                st.success("✅ Os pressupostos de normalidade e homogeneidade foram atendidos. Levene confirmou a homogeneidade.")
+                                st.success("✅ Os pressupostos de normalidade (Shapiro-Wilk) e o teste de homogeneidade foram atendidos (Levene). Levene confirmou a homogeneidade.")
                                 analise_valida = True
                             else:
                                 st.error("🚨 Embora os dados sigam distribuição normal, as variâncias são heterogêneas. Transforme os dados.")
