@@ -479,10 +479,14 @@ def explaining_ranking(df, method="Tukey"):
 # 📂 BLOCO 06: Motores Estatísticos II (Algoritmos Complexos: Tukey e Scott-Knott)
 # ==============================================================================
 def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
+    if EXIBIR_LOGS: print(f"🧪 Iniciando Tukey Manual | n_trats: {n_trats} | GL Resíduo: {df_resid}")
+
     ep = np.sqrt(mse / n_reps)
     q_crit = studentized_range.ppf(0.95, n_trats, df_resid)
     hsd = q_crit * ep
     
+    if EXIBIR_LOGS: print(f"📉 DMS (HSD) calculado: {hsd:.4f}")
+
     trats = medias.index.tolist()
     adj = {t: set() for t in trats}
     
@@ -490,6 +494,7 @@ def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
     vals = sorted_medias.values
     keys = sorted_medias.index
     
+    # Construção do grafo de não-diferença
     for i in range(len(vals)):
         for j in range(i + 1, len(vals)):
             diff = abs(vals[i] - vals[j])
@@ -499,6 +504,7 @@ def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
                 adj[t2].add(t1)
                 
     cliques = []
+    # Algoritmo Bron-Kerbosch para encontrar cliques máximos
     def bron_kerbosch(R, P, X):
         if not P and not X: cliques.append(R); return
         if not P: return
@@ -531,9 +537,19 @@ def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
         mapa_final[t] = "".join(sorted(mapa_letras[t]))
         
     df_res = pd.DataFrame({'Media': medias, 'Letras': pd.Series(mapa_final)})
+    
+    # CORREÇÃO AQUI: Força o nome do índice (cabeçalho da coluna 1) a ser igual ao original
+    df_res.index.name = medias.index.name
+    
+    if EXIBIR_LOGS: print("✅ Tukey finalizado com sucesso.")
     return df_res.sort_values('Media', ascending=False)
 
-def scott_knott(means, mse, df_resid, reps):
+def scott_knott(means, mse, df_resid, reps, n_trats=None):
+    """
+    Algoritmo Scott-Knott.
+    """
+    if EXIBIR_LOGS: print(f"🌲 Iniciando Scott-Knott | Médias a agrupar: {len(means)}")
+    
     results = pd.DataFrame({'Media': means}).sort_values('Media', ascending=False)
     medias_ordenadas = results['Media'].values
     indices = results.index
@@ -543,26 +559,39 @@ def scott_knott(means, mse, df_resid, reps):
         if n < 2: return {ind[0]: 1}
         melhor_b0, corte_idx = -1, -1
         grand_mean = np.mean(meds)
+        
+        # Busca o ponto de corte que maximiza a soma de quadrados entre grupos (B0)
         for i in range(1, n):
             g1, g2 = meds[:i], meds[i:]
             b0 = i * (np.mean(g1) - grand_mean)**2 + (n-i) * (np.mean(g2) - grand_mean)**2
             if b0 > melhor_b0: melhor_b0, corte_idx = b0, i
+            
         sigma2 = mse / reps
+        # Estatística de teste Lambda
         lamb = (np.pi / (2 * (np.pi - 2))) * (melhor_b0 / sigma2)
+        # Valor crítico Qui-Quadrado assintótico
         critico = stats.chi2.ppf(0.95, df=n/(np.pi-2)) 
+        
         if lamb > critico:
+            if EXIBIR_LOGS: print(f"✂️ Corte detectado no índice {corte_idx} (Lambda={lamb:.2f} > Crit={critico:.2f})")
             dict_left = cluster_medias(meds[:corte_idx], ind[:corte_idx])
             dict_right = cluster_medias(meds[corte_idx:], ind[corte_idx:])
             max_grp = max(dict_left.values())
             for k in dict_right: dict_right[k] += max_grp
             return {**dict_left, **dict_right}
-        else: return {x: 1 for x in ind}
+        else: 
+            return {x: 1 for x in ind}
 
     grupos_dict = cluster_medias(medias_ordenadas, indices)
     results['Grupo_Num'] = results.index.map(grupos_dict)
     unique_grps = sorted(results['Grupo_Num'].unique())
     mapa_letras = {num: get_letra_segura(i) for i, num in enumerate(unique_grps)}
     results['Grupo'] = results['Grupo_Num'].map(mapa_letras)
+    
+    # GARANTIA EXTRA: Assegura que o nome do índice está preservado aqui também
+    results.index.name = means.index.name
+    
+    if EXIBIR_LOGS: print("✅ Scott-Knott finalizado.")
     return results[['Media', 'Grupo']]
 # ==============================================================================
 # 🏁 FIM DO BLOCO 06
@@ -575,47 +604,30 @@ def scott_knott(means, mse, df_resid, reps):
 from patsy.contrasts import Sum
 
 @st.cache_data(show_spinner=False)
-def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
-    locais = df[col_local].unique()
-    mses = {}
-    for loc in locais:
-        df_loc = df[df[col_local] == loc]
-        if delineamento == 'DBC': 
-            formula = f"{col_resp} ~ C({col_trat}, Sum) + C({col_bloco}, Sum)"
-        else: 
-            formula = f"{col_resp} ~ C({col_trat}, Sum)"
-            
-        try:
-            modelo = ols(formula, data=df_loc).fit()
-            mses[loc] = modelo.mse_resid
-        except: pass 
-    if not mses: return None, None, {}
-    max_mse = max(mses.values())
-    min_mse = min(mses.values())
-    razao = max_mse / min_mse
-    return razao, mses, {k: v for k, v in sorted(mses.items(), key=lambda item: item[1])}
-
-@st.cache_data(show_spinner=False)
-def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=None):
-    """Roda ANOVA Individual e armazena resultado em cache."""
-    # Como statsmodels objects são pesados, aqui garantimos a execução rápida
-    # Se os dados (df) não mudaram, ele retorna o dicionário pronto instantaneamente.
-    
-    # LIMPEZA CRÍTICA (Já deve vir limpo, mas segurança extra não custa)
-    df_calc = df.copy() # Cópia leve para não afetar cache externo
-    
+def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=None):
+    """
+    Roda ANOVA Individual Dinâmica (Suporta Fatorial).
+    Recebe: cols_trats (LISTA de colunas).
+    """
+    df_calc = df.copy()
     res = {}
-    if delineamento == 'DBC': 
-        formula = f"{col_resp} ~ C({col_trat}, Sum) + C({col_bloco}, Sum)"
-    else: 
-        formula = f"{col_resp} ~ C({col_trat}, Sum)"
     
+    # 1. Montagem Dinâmica da Fórmula (fator1 * fator2 * ...)
+    # O operador '*' no Patsy gera automaticamente Efeitos Principais + Interações
+    termos_trats = [f"C({trat}, Sum)" for trat in cols_trats]
+    formula_trats = " * ".join(termos_trats)
+    
+    if delineamento == 'DBC': 
+        formula = f"{col_resp} ~ {formula_trats} + C({col_bloco}, Sum)"
+    else: 
+        formula = f"{col_resp} ~ {formula_trats}"
+    
+    # 2. Execução do Modelo
     try:
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
     except:
-        # Fallback
-        if delineamento == 'DBC': formula = f"{col_resp} ~ C({col_bloco}, Sum) + C({col_trat}, Sum)"
+        # Fallback para typ=1 se typ=3 falhar (raro, mas possível em dados desbalanceados)
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
@@ -624,33 +636,48 @@ def rodar_analise_individual(df, col_trat, col_resp, delineamento, col_bloco=Non
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     
+    # 3. Extração do P-valor (Busca o P-valor da interação de maior ordem ou do fator único)
     try:
-        res['p_val'] = anova.loc[f"C({col_trat}, Sum)", "PR(>F)"]
+        if len(cols_trats) == 1:
+            res['p_val'] = anova.loc[f"C({cols_trats[0]}, Sum)", "PR(>F)"]
+        else:
+            # Tenta pegar a interação total (ex: A:B:C)
+            p_found = 1.0
+            for idx in anova.index:
+                if str(idx).count(":") == len(cols_trats) - 1: # Ex: 2 fatores tem 1 ':', 3 fatores tem 2 ':'
+                      res['p_val'] = anova.loc[idx, "PR(>F)"]
+                      break
     except:
-        p_found = 1.0
-        for idx in anova.index:
-            if col_trat in str(idx) and ":" not in str(idx):
-                p_found = anova.loc[idx, "PR(>F)"]
-                break
-        res['p_val'] = p_found
+        res['p_val'] = 1.0 # Fallback seguro
 
+    # 4. Pressupostos
     res['shapiro'] = stats.shapiro(modelo.resid)
-    grupos = [g[col_resp].values for _, g in df_calc.groupby(col_trat)]
-    res['bartlett'] = stats.bartlett(*grupos)
-    res['levene'] = stats.levene(*grupos, center='median')
+    
+    # Para Bartlett/Levene em Fatorial, precisamos criar um grupo único combinado
+    if len(cols_trats) > 1:
+        grupo_combinado = df_calc[cols_trats].astype(str).agg(' + '.join, axis=1)
+    else:
+        grupo_combinado = df_calc[cols_trats[0]]
+        
+    grupos_vals = [g[col_resp].values for _, g in df_calc.assign(temp_group=grupo_combinado).groupby('temp_group')]
+    
+    res['bartlett'] = stats.bartlett(*grupos_vals)
+    res['levene'] = stats.levene(*grupos_vals, center='median')
     
     return res
 
 @st.cache_data(show_spinner=False)
-def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_bloco=None):
-    """Roda ANOVA Conjunta com Cache."""
+def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento, col_bloco=None):
+    """
+    Para conjunta, usaremos a estratégia da 'Coluna Sintética' (col_trat_combo) 
+    para simplificar a interação Tripla (Local x FatorA x FatorB).
+    """
     df_calc = df.copy()
-    
     res = {}
     if delineamento == 'DBC':
-        termos = f"C({col_trat}, Sum) * C({col_local}, Sum) + C({col_bloco}, Sum):C({col_local}, Sum)"
+        termos = f"C({col_trat_combo}, Sum) * C({col_local}, Sum) + C({col_bloco}, Sum):C({col_local}, Sum)"
     else:
-        termos = f"C({col_trat}, Sum) * C({col_local}, Sum)"
+        termos = f"C({col_trat_combo}, Sum) * C({col_local}, Sum)"
         
     formula = f"{col_resp} ~ {termos}"
     
@@ -666,7 +693,7 @@ def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     res['shapiro'] = stats.shapiro(modelo.resid)
-    grupos = [g[col_resp].values for _, g in df_calc.groupby(col_trat)]
+    grupos = [g[col_resp].values for _, g in df_calc.groupby(col_trat_combo)]
     res['bartlett'] = stats.bartlett(*grupos)
     res['levene'] = stats.levene(*grupos, center='median')
     
@@ -675,12 +702,44 @@ def rodar_analise_conjunta(df, col_trat, col_resp, col_local, delineamento, col_
     
     for idx in anova.index:
         nome = str(idx)
-        if col_trat in nome and col_local not in nome and ":" not in nome:
+        if col_trat_combo in nome and col_local not in nome and ":" not in nome:
             res['p_trat'] = anova.loc[idx, "PR(>F)"]
-        if col_trat in nome and col_local in nome and ":" in nome:
+        if col_trat_combo in nome and col_local in nome and ":" in nome:
             res['p_interacao'] = anova.loc[idx, "PR(>F)"]
             
     return res
+
+# --- NOVA FUNÇÃO ADICIONADA: CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
+@st.cache_data(show_spinner=False)
+def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
+    """
+    Calcula a razão entre o maior e o menor MSE dos locais individuais.
+    Retorna: (Razão, Maior_MSE, Menor_MSE)
+    """
+    if EXIBIR_LOGS: print(f"⚖️ Verificando homogeneidade de variâncias entre locais...")
+    
+    locais = df[col_local].unique()
+    mses = []
+    
+    for loc in locais:
+        df_loc = df[df[col_local] == loc]
+        # Roda a análise individual para pegar o MSE (QMRes)
+        # Nota: Passamos [col_trat] como lista porque a função individual espera lista
+        res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
+        mses.append(res['mse'])
+        
+    if not mses: return 0, 0, 0
+    
+    max_mse = max(mses)
+    min_mse = min(mses)
+    
+    if min_mse == 0: return 999, max_mse, min_mse # Evita divisão por zero
+    
+    razao = max_mse / min_mse
+    
+    if EXIBIR_LOGS: print(f"⚖️ Razão MSE: {razao:.2f} (Max: {max_mse:.4f}, Min: {min_mse:.4f})")
+    
+    return razao, max_mse, min_mse
 # ==============================================================================
 # 🏁 FIM DO BLOCO 07
 # ==============================================================================
@@ -733,102 +792,179 @@ st.title("🌱 AgroStat Pro: Análises Estatísticas")
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Interface - Sidebar (V18 - VISUAL LIMPO E ORGANIZADO)
+# 📂 BLOCO 09: Interface - Sidebar (V21 - MENU DE NAVEGAÇÃO)
 # ==============================================================================
-st.sidebar.header("📂 Configuração de Dados")
+st.sidebar.image("https://img.icons8.com/color/96/seed.png", width=60) # Ícone opcional
+st.sidebar.title("AgroStat Pro")
 
-# 1. INICIALIZAÇÃO DE SEGURANÇA
-if 'processando' not in st.session_state:
-    st.session_state['processando'] = False
+# --- MENU PRINCIPAL ---
+# Define qual "parte" do aplicativo será exibida
+modo_app = st.sidebar.radio(
+    "Navegação:",
+    ("📊 Análise Estatística", "🎲 Planejamento (Sorteio)"),
+    index=0
+)
 
-if 'ultimo_arquivo_id' not in st.session_state:
-    st.session_state['ultimo_arquivo_id'] = None
+st.sidebar.markdown("---")
 
-arquivo = st.sidebar.file_uploader("Upload CSV ou Excel", type=["xlsx", "csv"], key="uploader")
+# ==============================================================================
+# LÓGICA CONDICIONAL DA SIDEBAR
+# ==============================================================================
 
-# 2. LIMPEZA AUTOMÁTICA (Ao trocar arquivo)
-if arquivo is not None:
-    if arquivo.file_id != st.session_state['ultimo_arquivo_id']:
-        st.cache_data.clear() 
-        st.session_state['ultimo_arquivo_id'] = arquivo.file_id
-        st.session_state['processando'] = False 
-        st.rerun()
+# --- MODO 1: ANÁLISE ESTATÍSTICA (O que já existia) ---
+if modo_app == "📊 Análise Estatística":
+    st.sidebar.header("📂 Configuração de Análise")
 
-if arquivo:
-    try:
-        if arquivo.name.endswith('.csv'): 
-            df = pd.read_csv(arquivo)
-        else: 
-            df = pd.read_excel(arquivo)
-    except Exception as e:
-        st.sidebar.error(f"Erro ao ler arquivo: {e}")
-        st.stop()
-        
-    colunas = df.columns.tolist()
-    
-    st.sidebar.success(f"Carregado: {len(df)} linhas")
-    st.sidebar.markdown("---")
-    
-    # Inputs de Configuração
-    tipo_del = st.sidebar.radio("Delineamento Experimental:", ("DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"), on_change=reset_analise)
-    delineamento = "DIC" if "DIC" in tipo_del else "DBC"
-    
-    col_trat = st.sidebar.selectbox("Tratamentos (Genótipos/Cultivares)", colunas, on_change=reset_analise)
-    
-    OPCAO_PADRAO = "Local Único (Análise Individual)" 
-    col_local = st.sidebar.selectbox("Local/Ambiente (Opcional)", [OPCAO_PADRAO] + [c for c in colunas if c != col_trat], on_change=reset_analise)
-    
-    col_bloco = None
-    if delineamento == "DBC":
-        col_bloco = st.sidebar.selectbox("Blocos (Repetições)", [c for c in colunas if c not in [col_trat, col_local]], on_change=reset_analise)
-    else:
-        col_rep_dic = st.sidebar.selectbox("Repetições / ID (Opcional)", ["(Automático)"] + [c for c in colunas if c not in [col_trat, col_local]], on_change=reset_analise)
+    if 'processando' not in st.session_state:
+        st.session_state['processando'] = False
 
-    cols_ocupadas = [col_trat, col_local]
-    if delineamento == "DBC": cols_ocupadas.append(col_bloco)
-    elif delineamento == "DIC" and 'col_rep_dic' in locals() and col_rep_dic != "(Automático)": cols_ocupadas.append(col_rep_dic)
+    if 'ultimo_arquivo_id' not in st.session_state:
+        st.session_state['ultimo_arquivo_id'] = None
 
-    lista_resps = st.sidebar.multiselect("Variáveis Resposta (Selecione 1 ou mais)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+    arquivo = st.sidebar.file_uploader("Upload CSV ou Excel", type=["xlsx", "csv"], key="uploader")
 
-    modo_analise = "INDIVIDUAL"
-    if col_local != OPCAO_PADRAO:
-        n_locais = len(df[col_local].unique())
-        if n_locais > 1:
-            modo_analise = "CONJUNTA"
-            st.sidebar.info(f"🌍 Modo Conjunta Ativado! ({n_locais} locais detectados)")
-        else:
-            st.sidebar.warning("⚠️ Coluna de Local selecionada, mas há apenas 1 local. Rodando modo Individual.")
-    
-    st.sidebar.markdown("---")
-
-    # --- BOTÃO PRINCIPAL ---
-    if st.sidebar.button("🚀 Processar Estatística", type="primary"):
-        st.session_state['processando'] = True
-
-    # --- BOTÃO DE EMERGÊNCIA (Agora escondido na Sidebar) ---
-    st.sidebar.markdown("---")
-    # CORREÇÃO AQUI: st.sidebar.expander garante que fique na esquerda
-    with st.sidebar.expander("🔧 Manutenção / Cache"):
-        st.caption("Use se o app ficar lento ou travar.")
-        if st.button("🧹 Limpar Memória"):
-            st.cache_data.clear()
-            st.session_state['processando'] = False
+    if arquivo is not None:
+        if arquivo.file_id != st.session_state['ultimo_arquivo_id']:
+            st.cache_data.clear() 
+            st.session_state['ultimo_arquivo_id'] = arquivo.file_id
+            st.session_state['processando'] = False 
             st.rerun()
 
+    if arquivo:
+        try:
+            if arquivo.name.endswith('.csv'): 
+                df = pd.read_csv(arquivo)
+            else: 
+                df = pd.read_excel(arquivo)
+        except Exception as e:
+            st.sidebar.error(f"Erro ao ler arquivo: {e}")
+            st.stop()
+            
+        colunas = df.columns.tolist()
+        st.sidebar.success(f"Carregado: {len(df)} linhas")
+        st.sidebar.markdown("---")
+        
+        # Inputs de Configuração
+        tipo_del = st.sidebar.radio("Delineamento Experimental:", ("DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"), on_change=reset_analise)
+        delineamento = "DIC" if "DIC" in tipo_del else "DBC"
+        
+        cols_trats = st.sidebar.multiselect("Fatores/Tratamentos (Selecione 1 ou mais)", colunas, on_change=reset_analise)
+        
+        OPCAO_PADRAO = "Local Único (Análise Individual)" 
+        col_local = st.sidebar.selectbox("Local/Ambiente (Opcional)", [OPCAO_PADRAO] + [c for c in colunas if c not in cols_trats], on_change=reset_analise)
+        
+        col_bloco = None
+        cols_ocupadas = cols_trats + [col_local]
+        
+        if delineamento == "DBC":
+            col_bloco = st.sidebar.selectbox("Blocos (Repetições)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+            cols_ocupadas.append(col_bloco)
+        else:
+            col_rep_dic = st.sidebar.selectbox("Repetições / ID (Opcional)", ["(Automático)"] + [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+            if col_rep_dic != "(Automático)": cols_ocupadas.append(col_rep_dic)
+
+        lista_resps = st.sidebar.multiselect("Variáveis Resposta (Selecione 1 ou mais)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+
+        # Detecção de Modo
+        modo_analise = "INDIVIDUAL"
+        if col_local != OPCAO_PADRAO:
+            n_locais = len(df[col_local].unique())
+            if n_locais > 1:
+                modo_analise = "CONJUNTA"
+                st.sidebar.info(f"🌍 Modo Conjunta Ativado! ({n_locais} locais)")
+            else:
+                st.sidebar.warning("⚠️ Coluna de Local selecionada, mas há apenas 1 local. Rodando modo Individual.")
+        
+        # --- EDITOR DE RÓTULOS (MAPA DE SUBSTITUIÇÃO) ---
+        mapa_renomeacao = {} 
+        cols_para_editar = [c for c in cols_trats]
+        if col_local != OPCAO_PADRAO:
+            cols_para_editar.append(col_local)
+        
+        if cols_para_editar:
+            st.sidebar.markdown("---")
+            with st.sidebar.expander("🏷️ Renomear Rótulos (Opcional)", expanded=False):
+                st.caption("Substitua códigos (ex: 1, 2) por nomes reais. Atualiza gráficos e tabelas.")
+                for col_edit in set(cols_para_editar):
+                    st.markdown(f"**📝 {col_edit}**")
+                    vals_originais = sorted(df[col_edit].dropna().unique())
+                    if len(vals_originais) > 50:
+                        st.warning(f"Muitos níveis ({len(vals_originais)}). Mostrando apenas os 10 primeiros.")
+                        vals_originais = vals_originais[:10]
+
+                    col_map = {}
+                    for val in vals_originais:
+                        novo_val = st.text_input(f"{val} ➝", value=str(val), key=f"ren_{col_edit}_{val}")
+                        if novo_val != str(val):
+                            col_map[val] = novo_val
+                    
+                    if col_map:
+                        mapa_renomeacao[col_edit] = col_map
+
+        st.sidebar.markdown("---")
+
+        if st.sidebar.button("🚀 Processar Estatística", type="primary"):
+            st.session_state['processando'] = True
+
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("🔧 Manutenção / Cache"):
+            if st.button("🧹 Limpar Memória"):
+                st.cache_data.clear()
+                st.session_state['processando'] = False
+                st.rerun()
+
+# --- MODO 2: PLANEJAMENTO (Novo) ---
+elif modo_app == "🎲 Planejamento (Sorteio)":
+    st.sidebar.info("🛠️ Você está no modo de Pré-Experimento. Configure os tratamentos e sorteie o croqui na tela principal.")
+    # Reseta o estado de processamento da análise para não misturar as coisas
+    st.session_state['processando'] = False 
 # ==============================================================================
 # 🏁 FIM DO BLOCO 09
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 10: Execução, Alertas Explícitos e Diagnóstico (V6 - Final)
+# 📂 BLOCO 10: Execução, Alertas Explícitos e Diagnóstico (V10 - TRAVA DE MODO)
 # ==============================================================================
-    if st.session_state['processando']:
+    # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
+    if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
         if not lista_resps:
             st.error("⚠️ Por favor, selecione pelo menos uma Variável Resposta.")
+        elif not cols_trats:
+             st.error("⚠️ Por favor, selecione pelo menos um Fator/Tratamento.")
         else:
+            # --- 0. APLICAÇÃO INTELIGENTE DE RENOMEAÇÃO ---
+            df_analise = df.copy()
+            
+            if mapa_renomeacao:
+                log_message("🏷️ Detectada solicitação de renomeação de rótulos...")
+                try:
+                    for col_alvo, dic_troca in mapa_renomeacao.items():
+                        dic_troca_str = {str(k): v for k, v in dic_troca.items()}
+                        df_analise[col_alvo] = df_analise[col_alvo].astype(str).replace(dic_troca_str)
+                        log_message(f"✅ Coluna '{col_alvo}': {len(dic_troca)} itens renomeados.")
+                except Exception as e:
+                    st.error(f"Erro ao renomear rótulos: {e}")
+            
+            df = df_analise
+
             st.markdown(f"### 📋 Resultados: {len(lista_resps)} variáveis processadas")
             
+            # --- 0.1 ANÁLISE DE DIMENSÕES (LOGS) ---
+            log_message("🔍 Analisando dimensões dos fatores...")
+            dimensoes = []
+            for f in cols_trats:
+                n_niveis = df[f].nunique()
+                dimensoes.append(str(n_niveis))
+                log_message(f"📊 Fator '{f}': {n_niveis} níveis detectados.")
+            
+            esquema_txt = "x".join(dimensoes)
+            if len(cols_trats) > 1:
+                log_message(f"✅ Esquema Fatorial [{esquema_txt}] identificado.")
+                st.info(f"🔬 **Esquema Fatorial Detectado:** {esquema_txt} ({' x '.join(cols_trats)})")
+            else:
+                log_message(f"✅ Experimento Unifatorial [{esquema_txt}] identificado.")
+
             for i, col_resp_original in enumerate(lista_resps):
                 with st.expander(f"📊 Variável: {col_resp_original}", expanded=(i==0)):
                     
@@ -836,14 +972,19 @@ if arquivo:
                     transf_atual = get_transformacao_atual(col_resp_original)
                     df_proc, col_resp = aplicar_transformacao(df.copy(), col_resp_original, transf_atual)
                     
+                    # --- CRIAÇÃO DA COLUNA SINTÉTICA (COMBO) ---
+                    col_combo = "TRAT_COMBINADO"
+                    if len(cols_trats) > 1:
+                        df_proc[col_combo] = df_proc[cols_trats].astype(str).agg(' + '.join, axis=1)
+                    else:
+                        col_combo = cols_trats[0] 
+                    
                     if transf_atual != "Nenhuma":
                         st.info(f"🔄 **Transformação Ativa:** {transf_atual} (Coluna: {col_resp})")
                     
                     st.markdown(f"### Análise de: **{col_resp}**")
                     
                     res_analysis = {}
-                    
-                    # VARIÁVEIS DE CONTROLE
                     p_shap, p_bart, p_lev = None, None, None
                     res_model = None
                     anova_tab = None
@@ -854,96 +995,66 @@ if arquivo:
                     # --- 1. EXECUÇÃO DOS CÁLCULOS ---
                     if modo_analise == "INDIVIDUAL":
                         modo_atual_txt = "INDIVIDUAL"
-                        res = rodar_analise_individual(df_proc, col_trat, col_resp, delineamento, col_bloco)
+                        res = rodar_analise_individual(df_proc, cols_trats, col_resp, delineamento, col_bloco)
                         res_analysis = res
                         p_shap, p_bart, p_lev = res['shapiro'][1], res['bartlett'][1], res['levene'][1]
                         res_model = res['modelo']
                         anova_tab = formatar_tabela_anova(res['anova'])
                         p_final_trat = res['p_val']
-                        
-                        # Calcula métricas extras (F bruto, classes de erro)
-                        extras = calcular_metricas_extras(anova_tab, res_model, col_trat)
-                        
+                        extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
                         st.markdown("#### 📝 Métricas Estatísticas")
-                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_trat, df_proc[col_resp].mean(), p_final_trat)
+                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, cols_trats[0], df_proc[col_resp].mean(), p_final_trat)
                         st.markdown(txt_metrics)
 
                     else: # CONJUNTA
                         modo_atual_txt = "CONJUNTA"
-                        res_conj = rodar_analise_conjunta(df_proc, col_trat, col_resp, col_local, delineamento, col_bloco)
+                        res_conj = rodar_analise_conjunta(df_proc, col_combo, col_resp, col_local, delineamento, col_bloco)
                         res_analysis = res_conj
                         p_shap, p_bart, p_lev = res_conj['shapiro'][1], res_conj['bartlett'][1], res_conj['levene'][1]
                         res_model = res_conj['modelo']
                         anova_tab = formatar_tabela_anova(res_conj['anova'])
-                        razao, _, _ = calcular_homogeneidade(df_proc, col_trat, col_resp, col_local, col_bloco, delineamento)
+                        razao, _, _ = calcular_homogeneidade(df_proc, col_combo, col_resp, col_local, col_bloco, delineamento)
                         p_final_trat = res_conj['p_trat']
-                        
-                        # Calcula métricas extras
-                        extras = calcular_metricas_extras(anova_tab, res_model, col_trat)
-
+                        extras = calcular_metricas_extras(anova_tab, res_model, col_combo)
                         st.markdown("#### 📝 Métricas Estatísticas")
-                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_trat, df_proc[col_resp].mean(), p_final_trat, razao)
+                        txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_final_trat, razao)
                         st.markdown(txt_metrics)
-                        
-                        # Alerta específico da Conjunta (Razão MSE)
                         if razao and razao > 7: 
-                            st.error(f"🚨 **Violação de Homogeneidade (MSE):** A razão entre o maior e menor quadrado médio residual foi {razao:.2f} (> 7). Isso invalida a análise conjunta.")
+                            st.error(f"🚨 **Violação de Homogeneidade (MSE):** Razão {razao:.2f} > 7.")
 
-                    # --- 2. ALERTAS EXPLÍCITOS (VERMELHOS) ---
-                    # Aqui mostramos CADA problema individualmente, como você pediu.
-                    
-                    # A) CV
+                    # --- 2. ALERTAS ---
                     cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
-                    if cv_val > 20: 
-                        st.error(f"🚨 **CV Muito Alto ({cv_val:.2f}%):** Dados dispersos indicam baixa precisão experimental.")
-                    
-                    # B) Acurácia
-                    if "🔴" in extras['ac_class']:
-                        st.error("🚨 **Acurácia Baixa/Zerada:** A confiabilidade para selecionar genótipos é nula ou muito baixa.")
+                    if cv_val > 20: st.error(f"🚨 **CV Muito Alto ({cv_val:.2f}%):** Baixa precisão.")
+                    if "🔴" in extras['ac_class']: st.error("🚨 **Acurácia Baixa/Zerada.**")
+                    if "🔴" in extras['h2_class']: st.error("🚨 **Herdabilidade Baixa/Zerada.**")
+                    if "🔴" in extras['r2_class']: st.error(f"🚨 **R² Baixo ({extras['r2']:.2f}).**")
 
-                    # C) Herdabilidade
-                    if "🔴" in extras['h2_class']: 
-                        st.error("🚨 **Herdabilidade Baixa/Zerada:** A influência do ambiente superou a genética.")
-
-                    # D) R2
-                    if "🔴" in extras['r2_class']: 
-                        st.error(f"🚨 **R² Baixo ({extras['r2']:.2f}):** O modelo matemático não explica bem os dados.")
-
-                    # --- 3. DIAGNÓSTICO EXPLICATIVO (AZUL) ---
-                    # Aparece APENAS para explicar o fenômeno matemático dos zeros (F <= 1)
-                    f_bruto = extras.get('f_valor_bruto', 0)
-                    if f_bruto <= 1 and f_bruto != 0:
-                        st.info(f"""
-                        💡 **Nota Técnica sobre os Zeros:**
-                        Notei que Acurácia e Herdabilidade deram 0.00. Não é erro.
-                        Isso ocorreu porque o **F-calculado ({f_bruto:.2f})** foi menor ou igual a 1.
-                        Matematicamente, isso significa que a variação entre repetições (erro) foi maior que a variação entre tratamentos.
-                        """)
-
-                    # --- 4. EXIBIÇÃO DE RESULTADOS ANOVA ---
-                    # Texto P-valor Tratamento
-                    if p_final_trat < 0.001: txt_p = "< 0.001 (***)"
-                    elif p_final_trat < 0.05: txt_p = f"= {p_final_trat:.4f} (*)"
-                    else: txt_p = f"= {p_final_trat:.4f} (ns)"
-
+                    # --- 3. EXIBIÇÃO ---
                     if p_final_trat < 0.05:
-                        st.success(f"✅ **Diferença Significativa:** Há diferença estatística entre os tratamentos (P {txt_p}).")
+                        st.success(f"✅ **Diferença Significativa (P < 0.05).**")
                     else:
-                        st.error(f"⚠️ **Não Significativo:** Estatisticamente, os tratamentos são iguais (P {txt_p}).")
+                        st.error(f"⚠️ **Não Significativo (P >= 0.05).**")
 
                     st.markdown("### 📊 Análise de Variância (ANOVA)")
                     st.dataframe(anova_tab)
 
                     if modo_atual_txt == "CONJUNTA":
                          p_int = res_conj.get('p_interacao', 1.0)
-                         if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).** O comportamento muda entre locais.")
-                         else: st.success(f"✅ **Interação GxA Não Significativa (P={p_int:.4f}).** Comportamento estável.")
+                         if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
+                         else: st.success(f"✅ **Interação GxA Não Significativa.**")
 
                     st.markdown("---")
-                    st.markdown("#### 🩺 Diagnóstico dos Pressupostos da ANOVA")
+                    st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
                     st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
                     
-                    log_message(f"🚀 Iniciando verificação de pressupostos PADRONIZADA para {col_resp}...")
+                    log_message(f"🚀 Verificação de pressupostos para {col_resp}...")
+
+                    # ==========================================================
+                    # 🪄 A MÁGICA DO FATORIAL ACONTECE AQUI
+                    # ==========================================================
+                    col_trat_original_lista = cols_trats # Backup da lista (se precisar)
+                    col_trat = col_combo 
+                    # ==========================================================
 # ==============================================================================
 # 🏁 FIM DO BLOCO 10
 # ==============================================================================
@@ -1021,214 +1132,195 @@ if arquivo:
 
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização (V16 - TRAVANDO EIXO NO ZERO)
+# 📂 BLOCO 12: Visualização (V28 - Correção: Edição de Grupos na Interação)
 # ==============================================================================
-                    # --- FUNÇÃO AUXILIAR DE ESTILO AVANÇADO ---
+                    # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
+                    def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
+                        """
+                        Gera a matriz de dupla entrada com letras Maiúsculas (Linha) e Minúsculas (Coluna).
+                        RETORNA: Objeto Styler formatado com CSS forçado para centralização.
+                        """
+                        log_message(f"🚀 Iniciando desdobramento: {f_linha} x {f_coluna}...")
+                        
+                        # A) MAIÚSCULAS: Fixa Linha -> Compara Colunas
+                        dict_upper = {}
+                        niveis_l = df_input[f_linha].unique()
+                        for nl in niveis_l:
+                            df_s = df_input[df_input[f_linha] == nl]
+                            meds = df_s.groupby(f_coluna)[col_resp].mean()
+                            reps = df_s.groupby(f_coluna)[col_resp].count().mean()
+                            res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
+                            for nc, row in res_comp.iterrows():
+                                dict_upper[(str(nl), str(nc))] = str(row.iloc[1]).upper()
+
+                        # B) MINÚSCULAS: Fixa Coluna -> Compara Linhas
+                        dict_lower = {}
+                        niveis_c = df_input[f_coluna].unique()
+                        for nc in niveis_c:
+                            df_s = df_input[df_input[f_coluna] == nc]
+                            meds = df_s.groupby(f_linha)[col_resp].mean()
+                            reps = df_s.groupby(f_linha)[col_resp].count().mean()
+                            res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
+                            for nl, row in res_comp.iterrows():
+                                dict_lower[(str(nl), str(nc))] = str(row.iloc[1]).lower()
+
+                        # C) MONTAGEM DA MATRIZ
+                        pivot = df_input.pivot_table(index=f_linha, columns=f_coluna, values=col_resp, aggfunc='mean')
+                        df_matriz = pivot.copy().astype(object)
+                        for l in pivot.index:
+                            for c in pivot.columns:
+                                val = pivot.loc[l, c]
+                                u = dict_upper.get((str(l), str(c)), "?")
+                                low = dict_lower.get((str(l), str(c)), "?")
+                                df_matriz.loc[l, c] = f"{val:.2f} {u} {low}"
+                        
+                        # --- FORMATAÇÃO E CSS ---
+                        df_matriz.index.name = f_linha
+                        cols_atuais = df_matriz.columns.tolist()
+                        multi_cols = pd.MultiIndex.from_product([[f_coluna], cols_atuais])
+                        df_matriz.columns = multi_cols
+                        
+                        styler = df_matriz.style.set_properties(**{
+                            'text-align': 'center'
+                        }).set_table_styles([
+                            {'selector': 'th', 'props': [('text-align', 'center !important'), ('vertical-align', 'middle !important')]},
+                            {'selector': 'th.col_heading', 'props': [('text-align', 'center !important')]},
+                            {'selector': 'th.index_name', 'props': [('text-align', 'center !important')]},
+                            {'selector': 'td', 'props': [('text-align', 'center !important'), ('vertical-align', 'middle !important')]}
+                        ])
+
+                        log_message("✅ Matriz de dupla entrada concluída.")
+                        return styler
+
+                    # --- FUNÇÃO AUXILIAR DE ESTILO AVANÇADO (CORRIGIDA) ---
                     def estilizar_grafico_avancado(fig, configs, dados_max=None):
-                        """
-                        Aplica personalização total e trava a base das barras no eixo X (Zero).
-                        """
-                        # 1. Ajuste do Teto Y e TRAVAMENTO DO ZERO
-                        # Se não tiver dados_max, ele deixa automático, mas tenta ir ao zero.
                         range_y = None
                         if dados_max is not None:
                             margem_topo = 1.25 if configs['posicao_texto'] == 'outside' else 1.05
-                            # AQUI ESTÁ A CORREÇÃO: O primeiro valor é sempre 0
                             range_y = [0, dados_max * margem_topo]
 
-                        # 2. Configuração de Texto (Negrito)
                         template_texto = '<b>%{text}</b>' if configs['letras_negrito'] else '%{text}'
-
-                        # 3. Lógica de Borda (Mirror)
                         show_line = True
                         mirror_bool = False
-                        if configs['estilo_borda'] == "Caixa (Espelhado)":
-                            mirror_bool = True
-                        elif configs['estilo_borda'] == "Sem Bordas":
-                            show_line = False
+                        if configs['estilo_borda'] == "Caixa (Espelhado)": mirror_bool = True
+                        elif configs['estilo_borda'] == "Sem Bordas": show_line = False
 
-                        # 4. Lógica de Ticks
                         tick_mode = "outside" if configs['mostrar_ticks'] else ""
-
-                        # 5. Mapeamento de Estilo de Grade
                         mapa_dash = {"Pontilhado": "dot", "Tracejado": "dash", "Sólido": "solid"}
                         estilo_grid = mapa_dash.get(configs['estilo_subgrade'], 'dot')
 
-                        # 6. Correção para Gráficos de Linha (Scatter)
                         pos_texto_final = configs['posicao_texto']
                         if fig.data and fig.data[0].type == 'scatter':
                             if pos_texto_final == 'outside': pos_texto_final = 'top center'
                             elif pos_texto_final == 'inside': pos_texto_final = 'bottom center'
                             elif pos_texto_final == 'auto': pos_texto_final = 'top center'
 
-                        # 7. Atualiza Layout Geral
                         fig.update_layout(
-                            title=dict(
-                                text=f"<b>{configs['titulo_custom']}</b>", 
-                                x=0.5, xanchor='center',
-                                font=dict(size=configs['font_size'] + 4, color=configs['cor_texto'])
-                            ),
-                            paper_bgcolor=configs['cor_fundo'],
-                            plot_bgcolor=configs['cor_fundo'],
-                            margin=dict(l=60, r=40, t=60, b=60), # Margens levemente aumentadas para eixos não cortarem
-                            height=configs['altura'], 
-                            
-                            # EIXO Y (Travado no Zero)
+                            title=dict(text=f"<b>{configs['titulo_custom']}</b>", x=0.5, xanchor='center', font=dict(size=configs['font_size'] + 4, color=configs['cor_texto'])),
+                            paper_bgcolor=configs['cor_fundo'], plot_bgcolor=configs['cor_fundo'],
+                            margin=dict(l=60, r=40, t=60, b=60), height=configs['altura'],
                             yaxis=dict(
-                                title=dict(text=f"<b>{configs['label_y']}</b>", font=dict(color=configs['cor_texto'])), 
-                                showgrid=configs['mostrar_grid'], 
-                                gridcolor=configs['cor_grade'],
-                                
-                                # CONTROLE DE BORDA
-                                showline=show_line, 
-                                linewidth=1, 
-                                linecolor=configs['cor_texto'], 
-                                mirror=mirror_bool, 
-                                
-                                # CONTROLE DE TICKS
-                                ticks=tick_mode,
-                                ticklen=6,
-                                tickcolor=configs['cor_texto'],
-                                tickwidth=1,
-                                
-                                minor=dict(
-                                    showgrid=configs['mostrar_subgrade'], 
-                                    gridcolor=configs['cor_subgrade'],
-                                    gridwidth=0.5, 
-                                    griddash=estilo_grid
-                                ),
-                                # O PULO DO GATO: rangemode='tozero' força o eixo a começar em 0
-                                rangemode='tozero', 
-                                range=range_y, # Aplica o range [0, max] calculado acima
-                                tickfont=dict(color=configs['cor_texto'], size=configs['font_size'])
+                                title=dict(text=f"<b>{configs['label_y']}</b>", font=dict(color=configs['cor_texto'])),
+                                showgrid=configs['mostrar_grid'], gridcolor=configs['cor_grade'],
+                                showline=show_line, linewidth=1, linecolor=configs['cor_texto'], mirror=mirror_bool,
+                                ticks=tick_mode, ticklen=6, tickcolor=configs['cor_texto'], tickwidth=1,
+                                minor=dict(showgrid=configs['mostrar_subgrade'], gridcolor=configs['cor_subgrade'], gridwidth=0.5, griddash=estilo_grid),
+                                rangemode='tozero', range=range_y, tickfont=dict(color=configs['cor_texto'], size=configs['font_size'])
                             ),
-                            # EIXO X
                             xaxis=dict(
                                 title=dict(text=f"<b>{configs['label_x']}</b>", font=dict(color=configs['cor_texto'])),
                                 tickfont=dict(color=configs['cor_texto'], size=configs['font_size']),
-                                showline=show_line, 
-                                linewidth=1,
-                                linecolor=configs['cor_texto'],
-                                mirror=mirror_bool
+                                showline=show_line, linewidth=1, linecolor=configs['cor_texto'], mirror=mirror_bool
                             ),
                             font=dict(family=configs['font_family'], size=configs['font_size'], color=configs['cor_texto']),
-                            
-                            # LEGENDA
                             showlegend=configs['mostrar_legenda'],
-                            legend=dict(
-                                title=dict(text=f"<b>{configs['titulo_legenda']}</b>", font=dict(color=configs['cor_texto'])),
-                                font=dict(family=configs['font_family'], size=configs['font_size'], color=configs['cor_texto']),
-                                bgcolor=configs['cor_fundo'],
-                                borderwidth=0
-                            )
+                            legend=dict(title=dict(text=f"<b>{configs['titulo_legenda']}</b>", font=dict(color=configs['cor_texto'])), bgcolor=configs['cor_fundo'], borderwidth=0)
                         )
                         
-                        # 8. Configuração das Barras/Linhas
+                        # Atualiza propriedades gerais e FORÇA a exibição da legenda nos traços
                         fig.update_traces(
-                            texttemplate=template_texto,
-                            textposition=pos_texto_final,
-                            textfont=dict(size=configs['font_size'], color=configs['cor_texto']),
-                            cliponaxis=False,
+                            texttemplate=template_texto, 
+                            textposition=pos_texto_final, 
+                            textfont=dict(size=configs['font_size'], color=configs['cor_texto']), 
+                            cliponaxis=False, 
                             marker_line_color=configs['cor_texto'], 
-                            marker_line_width=1.0
+                            marker_line_width=1.0,
+                            showlegend=configs['mostrar_legenda'] # IMPORTANTE: Força a legenda no traço
                         )
-
-                        # 9. RENOMEAÇÃO DOS ITENS DA LEGENDA
+                        
+                        # Aplica a cor da barra se for cor única
+                        if configs.get('cor_barras'):
+                            fig.update_traces(marker_color=configs['cor_barras'])
+                        
+                        # Atualiza os nomes das legendas (Renomeação)
                         if configs['mapa_nomes_grupos']:
-                            fig.for_each_trace(lambda t: t.update(name = configs['mapa_nomes_grupos'].get(t.name, t.name)))
-
+                            for trace in fig.data:
+                                if trace.name in configs['mapa_nomes_grupos']:
+                                    novo_nome = configs['mapa_nomes_grupos'][trace.name]
+                                    trace.name = novo_nome
+                                    trace.legendgroup = novo_nome # Atualiza o grupo também para consistência
+                                    
                         return fig
 
-                    # --- COMPONENTE DE EDITOR COM FORMULÁRIO ---
+                    # --- COMPONENTE DE EDITOR COM FORMULÁRIO (ORIGINAL) ---
                     def mostrar_editor_grafico(key_prefix, titulo_padrao, label_x_padrao, label_y_padrao, usar_cor_unica=True, grupos_sk=None):
-                        """Gera o painel de edição EM LOTE (Form)."""
-                        
                         with st.expander(f"✏️ Personalizar Visual do Gráfico"):
                             with st.form(key=f"form_{key_prefix}"):
                                 c1, c2, c3 = st.columns(3)
-                                
-                                # COLUNA 1: CORES & GRADES
                                 with c1:
                                     st.markdown("##### 🎨 Cores & Linhas")
                                     cor_fundo = st.color_picker("Fundo", "#FFFFFF", key=f"{key_prefix}_bg")
                                     cor_texto = st.color_picker("Textos/Eixos", "#000000", key=f"{key_prefix}_txt")
-                                    
                                     c_g1, c_g2 = st.columns(2)
                                     with c_g1: cor_grade = st.color_picker("Grade Princ.", "#E5E5E5", key=f"{key_prefix}_grd_c")
                                     with c_g2: cor_subgrade = st.color_picker("Sub-grade", "#F5F5F5", key=f"{key_prefix}_subgrd_c")
-                                    
                                     st.markdown("---")
-                                    cor_barras = None
-                                    cores_map = {}
-                                    mapa_nomes_grupos = {}
-                                    
-                                    if usar_cor_unica:
-                                        cor_barras = st.color_picker("Barras (Principal)", "#D6D6D6", key=f"{key_prefix}_bar")
+                                    cor_barras = None; cores_map = {}; mapa_nomes_grupos = {}
+                                    if usar_cor_unica: cor_barras = st.color_picker("Barras (Principal)", "#D6D6D6", key=f"{key_prefix}_bar")
                                     else:
-                                        st.caption("Configurar Grupos (Cores e Nomes):")
+                                        st.caption("Configurar Grupos:")
                                         for idx, grp in enumerate(grupos_sk or []):
                                             col_g1, col_g2 = st.columns([1, 2])
                                             cp = px.colors.qualitative.Plotly[idx % len(px.colors.qualitative.Plotly)]
-                                            # Cor
                                             cores_map[grp] = col_g1.color_picker(f"Cor {grp}", value=cp, key=f"{key_prefix}_sk_{grp}")
-                                            # Nome na Legenda
                                             novo_nome = col_g2.text_input(f"Legenda {grp}", value=str(grp), key=f"{key_prefix}_nm_{grp}")
                                             mapa_nomes_grupos[str(grp)] = novo_nome
-
-                                # COLUNA 2: TEXTOS & RÓTULOS
                                 with c2:
                                     st.markdown("##### 📝 Textos")
                                     titulo_custom = st.text_input("Título", value=titulo_padrao, key=f"{key_prefix}_tit")
                                     label_y = st.text_input("Eixo Y", value=label_y_padrao, key=f"{key_prefix}_ly")
                                     label_x = st.text_input("Eixo X", value=label_x_padrao, key=f"{key_prefix}_lx")
                                     
-                                    if not usar_cor_unica:
-                                        st.markdown("---")
-                                        titulo_legenda = st.text_input("Título da Legenda", value="Grupos", key=f"{key_prefix}_leg_tit")
-                                    else:
-                                        titulo_legenda = ""
+                                    val_legenda_padrao = False if usar_cor_unica else True
+                                    mostrar_legenda = st.checkbox("Mostrar Legenda", value=val_legenda_padrao, key=f"{key_prefix}_show_leg")
+                                    
+                                    if mostrar_legenda: titulo_legenda = st.text_input("Título da Legenda", value="Grupos", key=f"{key_prefix}_leg_tit")
+                                    else: titulo_legenda = ""
                                     
                                     st.markdown("##### 🔠 Rótulos")
                                     mapa_pos = {"Externo (Topo)": "outside", "Interno (Dentro)": "inside", "Automático": "auto"}
                                     pos_escolhida = st.selectbox("Posição", list(mapa_pos.keys()), key=f"{key_prefix}_pos")
                                     letras_negrito = st.checkbox("Negrito", value=False, key=f"{key_prefix}_bold")
-
-                                # COLUNA 3: ESTRUTURA
                                 with c3:
                                     st.markdown("##### 📐 Estrutura")
                                     font_family = st.selectbox("Fonte", ["Arial", "Times New Roman", "Courier New", "Verdana"], key=f"{key_prefix}_font")
                                     font_size = st.number_input("Tamanho Fonte", 10, 30, 14, key=f"{key_prefix}_fs")
                                     altura = st.slider("Altura (px)", 300, 800, 450, key=f"{key_prefix}_h")
-                                    
                                     st.markdown("---")
                                     st.markdown("##### ▦ Grades & Eixos")
                                     mostrar_grid = st.checkbox("Grade Principal", True, key=f"{key_prefix}_grid")
                                     mostrar_subgrade = st.checkbox("Sub-grades", False, key=f"{key_prefix}_subgrid")
                                     estilo_subgrade = st.selectbox("Estilo Sub-grade", ["Pontilhado", "Tracejado", "Sólido"], key=f"{key_prefix}_stl_sub")
-                                    
                                     st.markdown("---")
                                     st.markdown("##### 🔳 Bordas & Ticks")
                                     estilo_borda = st.selectbox("Estilo da Borda", ["Apenas L (Eixos)", "Caixa (Espelhado)", "Sem Bordas"], key=f"{key_prefix}_borda")
                                     mostrar_ticks = st.checkbox("Mostrar Ticks (Traços)", True, key=f"{key_prefix}_ticks")
-                                
                                 st.markdown("---")
                                 submit_button = st.form_submit_button("🔄 Atualizar Gráfico")
-                        
-                        return {
-                            "cor_fundo": cor_fundo, "cor_texto": cor_texto, 
-                            "cor_grade": cor_grade, "cor_subgrade": cor_subgrade,
-                            "cor_barras": cor_barras, "cores_map": cores_map, "mapa_nomes_grupos": mapa_nomes_grupos,
-                            "titulo_custom": titulo_custom, "label_y": label_y, "label_x": label_x, "titulo_legenda": titulo_legenda,
-                            "font_family": font_family, "font_size": font_size,
-                            "altura": altura, 
-                            "mostrar_grid": mostrar_grid, "mostrar_subgrade": mostrar_subgrade, "estilo_subgrade": estilo_subgrade,
-                            "estilo_borda": estilo_borda, "mostrar_ticks": mostrar_ticks,
-                            "posicao_texto": mapa_pos[pos_escolhida], "letras_negrito": letras_negrito,
-                            "mostrar_legenda": not usar_cor_unica
-                        }
+                        return {"cor_fundo": cor_fundo, "cor_texto": cor_texto, "cor_grade": cor_grade, "cor_subgrade": cor_subgrade, "cor_barras": cor_barras, "cores_map": cores_map, "mapa_nomes_grupos": mapa_nomes_grupos, "titulo_custom": titulo_custom, "label_y": label_y, "label_x": label_x, "titulo_legenda": titulo_legenda, "font_family": font_family, "font_size": font_size, "altura": altura, "mostrar_grid": mostrar_grid, "mostrar_subgrade": mostrar_subgrade, "estilo_subgrade": estilo_subgrade, "estilo_borda": estilo_borda, "mostrar_ticks": mostrar_ticks, "posicao_texto": mapa_pos[pos_escolhida], "letras_negrito": letras_negrito, "mostrar_legenda": mostrar_legenda}
 
                     # ----------------------------------------------------------
-                    # CENÁRIO A: ANÁLISE INDIVIDUAL
+                    # CENÁRIO A: ANÁLISE INDIVIDUAL (Ou Fatorial Combinação)
                     # ----------------------------------------------------------
                     if modo_analise == "INDIVIDUAL":
                         medias_ind = df_proc.groupby(col_trat)[col_resp].mean()
@@ -1237,148 +1329,154 @@ if arquivo:
                         max_val_ind = medias_ind.max()
                         
                         df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
-                        df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind)
+                        df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
 
-                        t_tukey, t_sk, t_graf = st.tabs(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📈 Gráficos"])
-                        
-                        with t_tukey:
+                        tabs_ind = st.tabs(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📈 Gráficos"])
+                        interacao_sig = (len(cols_trats) >= 2 and res['p_val'] < 0.05)
+
+                        with tabs_ind[0]: # TUKEY
+                            st.markdown("#### Ranking Geral (Tukey)")
                             st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
-                            if res['p_val'] < 0.05: st.caption(explaining_ranking(df_tukey_ind, "Tukey"))
-                            else: st.warning("⚠️ ANOVA não significativa.")
+                            if interacao_sig:
+                                st.markdown("---")
+                                st.subheader("🔠 Matriz de Desdobramento (Tukey)")
+                                fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}")
+                                fc_tk = [f for f in cols_trats if f != fl_tk][0]
+                                df_m_tk = gerar_dataframe_matriz_total(df_proc, fl_tk, fc_tk, tukey_manual_preciso, res['mse'], res['df_resid'])
+                                st.dataframe(df_m_tk)
+                                st.caption("Médias seguidas por letras Maiúsculas na linha e minúsculas na coluna não diferem (Tukey 5%).")
 
-                        with t_sk:
+                        with tabs_ind[1]: # SCOTT-KNOTT
+                            st.markdown("#### Ranking Geral (Scott-Knott)")
                             st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
-                            if res['p_val'] < 0.05: st.caption(explaining_ranking(df_sk_ind, "Scott-Knott"))
-                            else: st.warning("⚠️ ANOVA não significativa.")
+                            if interacao_sig:
+                                st.markdown("---")
+                                st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
+                                fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}")
+                                fc_sk = [f for f in cols_trats if f != fl_sk][0]
+                                df_m_sk = gerar_dataframe_matriz_total(df_proc, fl_sk, fc_sk, scott_knott, res['mse'], res['df_resid'])
+                                st.dataframe(df_m_sk)
+                                st.caption("Médias seguidas por letras Maiúsculas na linha e minúsculas na coluna não diferem (Scott-Knott 5%).")
 
-                        with t_graf:
-                            # 1. TUKEY
+                        with tabs_ind[2]: # GRÁFICOS
                             st.markdown("#### 1. Gráfico de Tukey")
                             cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}", "Teste de Tukey", col_trat, col_resp, usar_cor_unica=True)
-                            
-                            f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), 
-                                          x=col_trat, y='Media', text='Letras')
-                            f_tk = estilizar_grafico_avancado(f_tk, cfg_tk, dados_max=max_val_ind)
-                            f_tk.update_traces(marker_color=cfg_tk['cor_barras'])
-                            st.plotly_chart(f_tk, use_container_width=True)
-                            
+                            f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
+                            st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True)
                             st.markdown("---")
-                            
-                            # 2. SCOTT-KNOTT
                             st.markdown("#### 2. Gráfico de Scott-Knott")
                             grps_sk = sorted(df_sk_ind['Grupo'].unique())
                             cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}", "Teste de Scott-Knott", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
-                            
-                            df_sk_plot = df_sk_ind.reset_index().rename(columns={'index':col_trat})
-                            f_sk = px.bar(df_sk_plot, x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk['cores_map'])
-                            f_sk = estilizar_grafico_avancado(f_sk, cfg_sk, dados_max=max_val_ind)
-                            st.plotly_chart(f_sk, use_container_width=True)
+                            f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk['cores_map'])
+                            st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True)
 
                     # ----------------------------------------------------------
                     # CENÁRIO B: ANÁLISE CONJUNTA
                     # ----------------------------------------------------------
                     else:
-                        if p_int < 0.05: st.info("Desdobramento disponível nas abas abaixo.")
                         locais_unicos = sorted(df_proc[col_local].unique())
                         titulos_abas = ["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Interação"]
                         abas = st.tabs(titulos_abas)
+                        p_int_conj = res_conj.get('p_interacao', 1.0)
                         
-                        with abas[0]: # Média Geral
-                            if p_int < 0.05:
-                                st.error("⚠️ **Alerta de Interação:** Recomenda-se analisar locais individualmente.")
-                                box_geral = st.expander("Visualizar Média Geral")
-                            else:
-                                st.success("✅ **Comportamento Estável:** Pode confiar.")
-                                box_geral = st.container()
+                        # --- ABA 0: MÉDIA GERAL + GRÁFICO GERAL ---
+                        with abas[0]: 
+                            # Lógica de Avisos (Warnings)
+                            if p_int_conj < 0.05:
+                                st.warning("⚠️ Interação Significativa Detectada: O comportamento dos tratamentos varia entre os ambientes. A Média Geral pode mascarar o desempenho real. Analise os desdobramentos dentro de cada local.")
+                            
+                            if res_conj['p_trat'] >= 0.05:
+                                st.warning("⚠️ Sem diferença significativa nos tratamentos (Média Geral).")
 
-                            with box_geral:
-                                medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
-                                reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean() 
-                                n_trats_geral = len(medias_geral)
-                                max_val_geral = medias_geral.max()
-                                
-                                df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral)
-                                df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, n_trats_geral)
-                                
-                                sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Scott-Knott", "📦 Tukey", "📈 Gráficos"])
-                                
-                                with sub_t1: st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                                with sub_t2: st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
-                                with sub_t3:
-                                    # TUKEY GERAL
-                                    cfg_tk_g = mostrar_editor_grafico(f"tk_g_{col_resp}", "Média Geral (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                    f_g_tk = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
-                                    f_g_tk = estilizar_grafico_avancado(f_g_tk, cfg_tk_g, dados_max=max_val_geral)
-                                    f_g_tk.update_traces(marker_color=cfg_tk_g['cor_barras'])
-                                    st.plotly_chart(f_g_tk, use_container_width=True)
-                                    
-                                    st.markdown("---")
-                                    # SK GERAL
-                                    grps_skg = sorted(df_sk_geral['Grupo'].unique())
-                                    cfg_sk_g = mostrar_editor_grafico(f"sk_g_{col_resp}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_skg)
-                                    f_g_sk = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), 
-                                                    x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk_g['cores_map'])
-                                    f_g_sk = estilizar_grafico_avancado(f_g_sk, cfg_sk_g, dados_max=max_val_geral)
-                                    st.plotly_chart(f_g_sk, use_container_width=True)
+                            # Cálculos (Tukey + Scott-Knott)
+                            medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
+                            reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
+                            max_val_geral = medias_geral.max()
 
-                        for k, loc in enumerate(locais_unicos): # Locais Individuais
+                            df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
+                            df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
+
+                            # SUB-ABAS PARA ESCOLHER O TESTE
+                            sub_abas_geral = st.tabs(["📦 Teste de Tukey", "📦 Teste de Scott-Knott"])
+                            
+                            # --- SUB-ABA TUKEY ---
+                            with sub_abas_geral[0]:
+                                st.markdown("#### Ranking Geral da Rede (Tukey)")
+                                st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
+                                st.markdown("---")
+                                st.markdown("#### 📊 Gráfico (Tukey)")
+                                cfg_tk_geral = mostrar_editor_grafico(f"tk_geral_{col_resp}", "Média Geral (Tukey)", col_trat, col_resp, usar_cor_unica=True)
+                                f_tk_geral = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
+                                st.plotly_chart(estilizar_grafico_avancado(f_tk_geral, cfg_tk_geral, max_val_geral), use_container_width=True)
+
+                            # --- SUB-ABA SCOTT-KNOTT ---
+                            with sub_abas_geral[1]:
+                                st.markdown("#### Ranking Geral da Rede (Scott-Knott)")
+                                st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
+                                st.markdown("---")
+                                st.markdown("#### 📊 Gráfico (Scott-Knott)")
+                                grps_sk_geral = sorted(df_sk_geral['Grupo'].unique())
+                                cfg_sk_geral = mostrar_editor_grafico(f"sk_geral_{col_resp}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_geral)
+                                f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk_geral['cores_map'])
+                                st.plotly_chart(estilizar_grafico_avancado(f_sk_geral, cfg_sk_geral, max_val_geral), use_container_width=True)
+
+                        # --- ABAS DE LOCAIS INDIVIDUAIS ---
+                        for k, loc in enumerate(locais_unicos): 
                             with abas[k+1]:
-                                if p_int >= 0.05:
-                                    st.warning(f"⚠️ Interação não significativa.")
-                                    box_local = st.expander(f"Ver dados de {loc}")
-                                else: box_local = st.container()
-
-                                with box_local:
-                                    df_loc = df_proc[df_proc[col_local] == loc]
-                                    res_loc = rodar_analise_individual(df_loc, col_trat, col_resp, delineamento, col_bloco)
-                                    
-                                    if res_loc['p_val'] < 0.05:
-                                        medias_loc = df_loc.groupby(col_trat)[col_resp].mean()
-                                        reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
-                                        n_trats_loc = len(medias_loc)
-                                        max_val_loc = medias_loc.max()
-
-                                        df_tukey_loc = tukey_manual_preciso(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, n_trats_loc)
-                                        df_sk_loc = scott_knott(medias_loc, res_loc['mse'], res_loc['df_resid'], reps_loc)
-                                        
-                                        sub_t1, sub_t2, sub_t3 = st.tabs(["📦 Scott-Knott", "📦 Tukey", "📈 Gráficos"])
-                                        with sub_t1: st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
-                                        with sub_t2: st.dataframe(df_tukey_loc.style.format({"Media": "{:.2f}"}))
-                                        with sub_t3:
-                                            # TUKEY LOCAL
-                                            cfg_tk_l = mostrar_editor_grafico(f"tk_{loc}_{col_resp}", f"Tukey - {loc}", col_trat, col_resp, usar_cor_unica=True)
-                                            f_l = px.bar(df_tukey_loc.reset_index().rename(columns={'index':col_trat}), 
-                                                         x=col_trat, y='Media', text='Letras')
-                                            f_l = estilizar_grafico_avancado(f_l, cfg_tk_l, dados_max=max_val_loc)
-                                            f_l.update_traces(marker_color=cfg_tk_l['cor_barras'])
-                                            st.plotly_chart(f_l, use_container_width=True)
-                                            
-                                            st.markdown("---")
-                                            # SK LOCAL
-                                            grps_skl = sorted(df_sk_loc['Grupo'].unique())
-                                            cfg_sk_l = mostrar_editor_grafico(f"sk_{loc}_{col_resp}", f"Scott-Knott - {loc}", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_skl)
-                                            f_sl = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), 
-                                                         x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk_l['cores_map'])
-                                            f_sl = estilizar_grafico_avancado(f_sl, cfg_sk_l, dados_max=max_val_loc)
-                                            st.plotly_chart(f_sl, use_container_width=True)
-
-                                    else: st.warning(f"Sem diferença significativa em {loc}.")
-                        
-                        with abas[-1]: # Interação
-                            if p_int < 0.05:
-                                st.success("✅ Interação Significativa.")
-                                df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
-                                cfg_int = mostrar_editor_grafico(f"int_{col_resp}", f"Interação GxA: {col_resp}", col_local, col_resp, usar_cor_unica=False)
+                                # Aviso se interação não for significativa
+                                if p_int_conj >= 0.05:
+                                    st.warning(f"⚠️ Sem diferença significativa na interação, não é possível analisar {loc} separadamente.")
                                 
-                                f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True)
-                                f_i = estilizar_grafico_avancado(f_i, cfg_int)
-                                f_i.update_traces(line=dict(width=3), marker=dict(size=10))
-                                st.plotly_chart(f_i, use_container_width=True)
-                            else: st.warning("⚠️ Interação Não Significativa.")
+                                df_loc = df_proc[df_proc[col_local] == loc]
+                                res_loc = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
+                                
+                                # AQUI ESTÁ A MUDANÇA: MOSTRA A TABELA MESMO SE P >= 0.05
+                                if res_loc['p_val'] >= 0.05:
+                                    st.warning(f"⚠️ Sem diferença significativa (Teste F) em {loc}.")
+                                
+                                # Calcula e Mostra SEMPRE (Incondicional)
+                                meds_loc = df_loc.groupby(col_trat)[col_resp].mean()
+                                reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
+                                df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
+                                st.dataframe(df_tk_loc.style.format({"Media": "{:.2f}"}))
+                                
+                                # Matriz de Desdobramento (Só faz sentido se houver diferença)
+                                if res_loc['p_val'] < 0.05 and len(cols_trats) >= 2: 
+                                    st.markdown("---")
+                                    fl_loc = st.selectbox(f"Fator Linha ({loc})", cols_trats, key=f"mat_tk_l_{loc}_{col_resp}")
+                                    fc_loc = [f for f in cols_trats if f != fl_loc][0]
+                                    df_m_loc = gerar_dataframe_matriz_total(df_loc, fl_loc, fc_loc, tukey_manual_preciso, res_loc['mse'], res_loc['df_resid'])
+                                    st.dataframe(df_m_loc)
+
+                        # --- ABA INTERAÇÃO ---
+                        with abas[-1]: 
+                            # Identifica os tratamentos para permitir edição de cor
+                            trats_inter = sorted(df_proc[col_trat].unique())
+                            
+                            if p_int_conj < 0.05:
+                                st.success("✅ Interação Significativa.")
+                                st.markdown("#### Matriz: Local (Linha) x Tratamento (Coluna)")
+                                df_m_conj = gerar_dataframe_matriz_total(df_proc, col_local, col_trat, tukey_manual_preciso, res_conj['mse'], res_conj['df_resid'])
+                                st.dataframe(df_m_conj)
+                                st.markdown("---")
+                                df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
+                                
+                                # CORREÇÃO AQUI: Passar os grupos (tratamentos) para o editor
+                                cfg_int = mostrar_editor_grafico(f"int_{col_resp}", f"Interação: {col_resp}", col_local, col_resp, usar_cor_unica=False, grupos_sk=trats_inter)
+                                f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, color_discrete_map=cfg_int['cores_map'])
+                                st.plotly_chart(estilizar_grafico_avancado(f_i, cfg_int), use_container_width=True)
+                            else: 
+                                st.warning("⚠️ Sem diferença significativa na interação.")
+                                st.caption("Visualização exploratória (sem valor estatístico de desdobramento):")
+                                df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
+                                
+                                # CORREÇÃO AQUI TAMBÉM
+                                cfg_int = mostrar_editor_grafico(f"int_ns_{col_resp}", f"Gráfico Exploratório (NS)", col_local, col_resp, usar_cor_unica=False, grupos_sk=trats_inter)
+                                f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, color_discrete_map=cfg_int['cores_map'])
+                                st.plotly_chart(estilizar_grafico_avancado(f_i, cfg_int), use_container_width=True)
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
-
 
 # ==============================================================================
 # 📂 BLOCO 13: Lógica de Fallback (Botões de Erro) e Encerramento
@@ -1476,4 +1574,139 @@ if arquivo:
 else: st.info("👈 Faça upload do arquivo para começar.")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 13
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 14: Planejamento (V6 - Identificação e Numeração Personalizada)
+# ==============================================================================
+import random
+import pandas as pd
+import itertools
+
+if modo_app == "🎲 Planejamento (Sorteio)":
+    st.title("🎲 Planejamento Experimental Pro")
+    st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
+
+    with st.form("form_planejamento"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("#### ⚙️ Design")
+            tipo_exp = st.selectbox("Delineamento", ["DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"])
+        with c2:
+            st.markdown("#### 🔢 Repetições")
+            n_reps = st.number_input("Nº de Repetições/Blocos", min_value=2, value=4)
+        with c3:
+            st.markdown("#### 📍 Identificação")
+            nome_ensaio = st.text_input("Nome do Ensaio/Área", value="Ensaio_01")
+
+        st.markdown("---")
+        
+        c_num1, c_num2 = st.columns([1, 2])
+        with c_num1:
+            num_inicial = st.number_input("Nº Inicial da Parcela", value=1, min_value=0)
+        with c_num2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.caption("A numeração das parcelas começará a partir deste valor.")
+
+        st.markdown("---")
+        
+        tipo_entrada = st.radio("Como definir os tratamentos?", ["📝 Lista Simples", "✖️ Esquema Fatorial (A x B ...)"], horizontal=True)
+        
+        lista_trats_final = []
+        if tipo_entrada == "📝 Lista Simples":
+            txt_trats = st.text_area("Digite os Tratamentos (um por linha):", "Controle\nT1\nT2\nT3")
+            if txt_trats:
+                lista_trats_final = [t.strip() for t in txt_trats.split('\n') if t.strip()]
+        else:
+            c_f1, c_f2 = st.columns(2)
+            with c_f1:
+                fator1_nome = st.text_input("Nome Fator 1", "Genotipo")
+                fator1_niveis = st.text_area("Níveis Fator 1 (um por linha)", "G1\nG2\nG3")
+            with c_f2:
+                fator2_nome = st.text_input("Nome Fator 2 (Opcional)", "Dose")
+                fator2_niveis = st.text_area("Níveis Fator 2 (um por linha)", "0%\n50%\n100%")
+            
+            if fator1_niveis:
+                l1 = [x.strip() for x in fator1_niveis.split('\n') if x.strip()]
+                l2 = [x.strip() for x in fator2_niveis.split('\n') if x.strip()] if fator2_niveis else []
+                if l2:
+                    combos = list(itertools.product(l1, l2))
+                    lista_trats_final = [f"{a} + {b}" for a, b in combos]
+                else:
+                    lista_trats_final = l1
+
+        st.markdown("---")
+        st.markdown("#### 📝 Variáveis a Coletar")
+        txt_vars = st.text_area("Cabeçalho da Planilha:", "Altura_cm\nProdutividade_kg")
+
+        st.markdown("---")
+        submitted = st.form_submit_button("🎲 Gerar Sorteio Oficial")
+
+    if submitted:
+        if not lista_trats_final:
+            st.error("⚠️ Nenhum tratamento definido.")
+        else:
+            # Sorteio puramente aleatório (sem Seed fixa)
+            parcelas = []
+            info_blocos = []
+            info_reps = [] 
+            
+            if "DIC" in tipo_exp:
+                base_trats = lista_trats_final * n_reps
+                random.shuffle(base_trats)
+                parcelas = base_trats
+                contadores = {t: 0 for t in lista_trats_final}
+                for t in parcelas:
+                    contadores[t] += 1
+                    info_reps.append(contadores[t])
+                info_blocos = ["-"] * len(parcelas) 
+
+            else: # DBC
+                for i in range(n_reps):
+                    bloco = lista_trats_final.copy()
+                    random.shuffle(bloco) 
+                    parcelas.extend(bloco)
+                    info_blocos.extend([f"Bloco {i+1}"] * len(bloco))
+                    info_reps.extend([i+1] * len(bloco))
+            
+            # --- MONTAGEM DO DATAFRAME COM NUMERAÇÃO INICIAL ---
+            total_sorteadas = len(parcelas)
+            ids_personalizados = range(num_inicial, num_inicial + total_sorteadas)
+            
+            dados_planilha = {"ID_Parcela": ids_personalizados}
+            
+            if "DBC" in tipo_exp:
+                dados_planilha["Bloco"] = info_blocos
+            
+            dados_planilha["Repeticao"] = info_reps
+            dados_planilha["Tratamento"] = parcelas
+            
+            if tipo_entrada != "📝 Lista Simples" and len(parcelas) > 0 and " + " in str(parcelas[0]):
+                try:
+                    split_data = [str(t).split(" + ") for t in parcelas]
+                    dados_planilha[f"Fator_{fator1_nome}"] = [x[0] for x in split_data]
+                    dados_planilha[f"Fator_{fator2_nome}"] = [x[1] for x in split_data]
+                except: pass 
+
+            df_sorteio = pd.DataFrame(dados_planilha)
+            
+            lista_vars = [v.strip() for v in txt_vars.split('\n') if v.strip()]
+            for var in lista_vars:
+                df_sorteio[var] = "" 
+            df_sorteio["Observacoes"] = ""
+
+            st.success(f"✅ Sorteio Realizado para: {nome_ensaio}")
+            st.markdown("### 📋 Planilha de Campo")
+            st.dataframe(df_sorteio, use_container_width=True, hide_index=True)
+            
+            csv = df_sorteio.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar Planilha (.csv)",
+                data=csv,
+                file_name=f"sorteio_{nome_ensaio}.csv",
+                mime="text/csv"
+            )
+# ==============================================================================
+# 🏁 FIM DO BLOCO 14
 # ==============================================================================
