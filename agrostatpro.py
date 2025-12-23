@@ -88,7 +88,10 @@ def formatar_numero(valor, decimais=2):
 def formatar_tabela_anova(anova_df):
     cols_map = {'sum_sq': 'SQ', 'df': 'GL', 'F': 'Fcalc', 'PR(>F)': 'P-valor'}
     df = anova_df.rename(columns=cols_map)
-    df.insert(2, 'QM', df['SQ'] / df['GL'])
+    
+    # Cálculo do QM (Quadrado Médio)
+    if 'SQ' in df.columns and 'GL' in df.columns:
+        df['QM'] = df['SQ'] / df['GL']
     
     if 'Intercept' in df.index: df = df.drop('Intercept')
         
@@ -120,9 +123,16 @@ def formatar_tabela_anova(anova_df):
         if p < 0.001: return "***" 
         if p < 0.01: return "**"    
         if p < 0.05: return "*"     
-        return "ns"                 
+        return "ns"                  
     
-    df['Sig.'] = df['P-valor'].apply(verificar_sig)
+    if 'P-valor' in df.columns:
+        df['Sig.'] = df['P-valor'].apply(verificar_sig)
+    
+    # --- CORREÇÃO: REORDENAÇÃO DAS COLUNAS (GL PRIMEIRO) ---
+    ordem_desejada = ['GL', 'SQ', 'QM', 'Fcalc', 'P-valor', 'Sig.']
+    # Filtra apenas as colunas que existem no dataframe para evitar erro
+    cols_finais = [c for c in ordem_desejada if c in df.columns]
+    df = df[cols_finais]
     
     cols_numericas = ['SQ', 'QM', 'Fcalc', 'P-valor']
     for col in cols_numericas:
