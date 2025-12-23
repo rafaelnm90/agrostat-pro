@@ -1328,7 +1328,7 @@ elif modo_app == "🎲 Planejamento (Sorteio)":
 
 
 # ==============================================================================
-# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V26 - Ordem Visual Ajustada)
+# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V27 - Correção Fatorial)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1365,7 +1365,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
             dimensoes.append(str(n_niveis))
         
         esquema_txt = "x".join(dimensoes)
-        if len(cols_trats) > 1:
+        eh_fatorial = len(cols_trats) > 1
+        
+        if eh_fatorial:
             st.info(f"🔬 **Esquema Fatorial Detectado:** {esquema_txt} ({' x '.join(cols_trats)})")
         else:
             log_message(f"✅ Experimento Unifatorial [{esquema_txt}] identificado.")
@@ -1395,7 +1397,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 res_model = None
                 anova_tab = None
                 extras = {} 
-                p_final_trat = 1.0
+                p_principal = 1.0 # P-valor do Fator Principal
+                p_interacao = 1.0 # P-valor da Interação (se houver)
                 modo_atual_txt = ""
 
                 if modo_analise == "INDIVIDUAL":
@@ -1406,17 +1409,25 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     res_model = res['modelo']
                     anova_tab = formatar_tabela_anova(res['anova'])
                     
-                    # --- CORREÇÃO DE SINCRONIA: Busca P-valor pelo NOME da coluna ---
+                    # --- EXTRAÇÃO INTELIGENTE DE P-VALORES ---
                     try:
-                        nome_trat_alvo = cols_trats[0]
-                        idx_alvo = [x for x in res['anova'].index if nome_trat_alvo in str(x) and ":" not in str(x)][0]
-                        p_final_trat = res['anova'].loc[idx_alvo, 'PR(>F)']
-                    except:
-                        p_final_trat = res['anova'].iloc[0]['PR(>F)']
+                        # 1. P-valor da Interação (Prioridade se for Fatorial)
+                        if eh_fatorial:
+                            # Busca linhas que tenham ":" (indicador de interação no statsmodels bruto)
+                            idx_int = [x for x in res['anova'].index if ":" in str(x)]
+                            if idx_int:
+                                p_interacao = res['anova'].loc[idx_int[-1], 'PR(>F)'] # Pega a interação de maior ordem
                         
+                        # 2. P-valor do Fator Principal (Sempre pega o primeiro fator listado)
+                        nome_primario = cols_trats[0]
+                        idx_prim = [x for x in res['anova'].index if nome_primario in str(x) and ":" not in str(x)][0]
+                        p_principal = res['anova'].loc[idx_prim, 'PR(>F)']
+                    except:
+                        p_principal = res['p_val'] # Fallback
+
                     extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
                     st.markdown("#### 📝 Métricas Estatísticas")
-                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, cols_trats[0], df_proc[col_resp].mean(), p_final_trat)
+                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, cols_trats[0], df_proc[col_resp].mean(), p_principal)
                     st.markdown(txt_metrics)
 
                 else: # CONJUNTA
@@ -1428,16 +1439,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     anova_tab = formatar_tabela_anova(res_conj['anova'])
                     razao, _, _ = calcular_homogeneidade(df_proc, col_combo, col_resp, col_local, col_bloco, delineamento)
                     
-                    # --- CORREÇÃO DE SINCRONIA (Conjunta) ---
-                    try:
-                         idx_trat = [x for x in res_conj['anova'].index if col_combo in str(x) and ":" not in str(x)][0]
-                         p_final_trat = res_conj['anova'].loc[idx_trat, 'PR(>F)']
-                    except:
-                         p_final_trat = res_conj['p_trat']
+                    p_interacao = res_conj.get('p_interacao', 1.0)
+                    p_principal = res_conj.get('p_trat', 1.0)
 
                     extras = calcular_metricas_extras(anova_tab, res_model, col_combo)
                     st.markdown("#### 📝 Métricas Estatísticas")
-                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_final_trat, razao)
+                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_principal, razao)
                     st.markdown(txt_metrics)
                     if razao and razao > 7: 
                         st.error(f"⚠️ **Violação de Homogeneidade (MSE):** Razão {razao:.2f} > 7. A variância entre os locais é muito discrepante.")
@@ -1448,30 +1455,26 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 
                 cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
                 
-                # A) CV (Coeficiente de Variação)
                 if cv_val <= 20: 
                     st.success(f"✅ **CV Adequado ({cv_val:.2f}%):** Boa precisão experimental.")
                 else: 
                     st.error(f"⚠️ **CV Alto ({cv_val:.2f}%):** Baixa precisão experimental. Atenção à desuniformidade.")
 
-                # B) ACURÁCIA
                 if "🔴" in extras['ac_class']: 
                     st.error(f"⚠️ **Acurácia Baixa ({extras['acuracia']:.2f}):** A confiabilidade para selecionar genótipos é baixa.")
                 else:
                     st.success(f"✅ **Acurácia Alta ({extras['acuracia']:.2f}):** Excelente confiabilidade para seleção.")
 
-                # C) HERDABILIDADE
                 if "🔴" in extras['h2_class']:
                     st.error(f"⚠️ **Herdabilidade Baixa ({extras['h2']:.2f}):** Forte influência ambiental sobre a genética.")
                 else:
                     st.success(f"✅ **Herdabilidade Alta ({extras['h2']:.2f}):** A maior parte da variação é genética.")
 
                 # D) NOTA PEDAGÓGICA
-                if p_final_trat >= 0.05:
+                if p_principal >= 0.05:
                     if "🔴" in extras['ac_class'] or "🔴" in extras['h2_class']:
                         st.info("💡 **Nota de Interpretação:** Você viu alertas vermelhos de Acurácia/Herdabilidade acima? **Fique tranquilo.** Como o Teste F não detectou diferença significativa (P ≥ 0.05), é matematicamente esperado que esses índices sejam baixos ou zero, pois não há variância genética 'sobrando' para calculá-los.")
 
-                # E) R2
                 if extras['r2'] < 0.50:
                     st.error(f"⚠️ **R² Baixo ({extras['r2']:.2f}):** O modelo explica menos de 50% da variação total.")
                 elif extras['r2'] < 0.70:
@@ -1485,23 +1488,27 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 
                 st.dataframe(anova_tab)
 
-                # ALERTA INTELIGENTE (Prioriza Interação na Conjunta)
-                if modo_atual_txt == "CONJUNTA":
-                    p_int = res_conj.get('p_interacao', 1.0)
-                    
-                    if p_int < 0.05:
-                        # CENÁRIO 1: Interação Significativa (PERIGO)
-                        st.warning(f"⚠️ **Cuidado: Interação Significativa (P={p_int:.4f}).** Embora o fator principal tenha P={p_final_trat:.4e}, o comportamento muda conforme o ambiente. **Não confie na média geral.**")
-                    else:
-                        # CENÁRIO 2: Interação Não Significativa (Aprovado)
-                        st.success(f"✅ **Interação Estável (NS).** O comportamento é consistente. Pode confiar no efeito principal (P={p_final_trat:.4f}).")
+                # ==========================================================
+                # LÓGICA DE DECISÃO DO ALERTA PRINCIPAL (AQUI ESTAVA O ERRO)
+                # ==========================================================
                 
+                if eh_fatorial or modo_atual_txt == "CONJUNTA":
+                    # --- CENÁRIO FATORIAL OU CONJUNTA (Prioridade: INTERAÇÃO) ---
+                    if p_interacao < 0.05:
+                        st.warning(f"⚠️ **Cuidado: Interação Significativa (P={p_interacao:.4e}).** O comportamento dos fatores muda dependendo da combinação. **Não confie na média geral.** Analise o desdobramento.")
+                    else:
+                        st.success(f"✅ **Interação Não Significativa (P={p_interacao:.4f}).** Os fatores agem de forma independente.")
+                        # Se a interação não é significativa, aí sim olhamos o principal
+                        if p_principal < 0.05:
+                            st.success(f"✅ **Efeito Principal Significativo (P={p_principal:.4e}).** Existe diferença entre os tratamentos na média.")
+                        else:
+                            st.error(f"⚠️ **Efeito Principal Não Significativo (P={p_principal:.4f}).** Médias estatisticamente iguais.")
                 else:
-                    # Análise Individual (Padrão)
-                    if p_final_trat < 0.05: 
-                        st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
+                    # --- CENÁRIO UNI-FATORIAL SIMPLES (Prioridade: FATOR PRINCIPAL) ---
+                    if p_principal < 0.05: 
+                        st.success(f"✅ **Diferença Significativa (P = {p_principal:.4e}).** Rejeita-se a Hipótese Nula (H0).")
                     else: 
-                        st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
+                        st.error(f"⚠️ **Não Significativo (P = {p_principal:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
 
                 st.markdown("---")
                 st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
