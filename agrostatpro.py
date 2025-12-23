@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V46 - Alerta Diretivo de Desdobramento)
+# 📂 BLOCO 12: Visualização Completa (V47 - Alerta Verde no Desdobramento)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1752,7 +1752,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         
                         if eh_fatorial:
                             # Busca P-valor da interação na tabela ANOVA
-                            # Procura linhas com ":" ou " x " (caso já esteja formatado)
                             idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
                             if idx_int:
                                 try:
@@ -1762,7 +1761,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
-                            # --- ALERTA DIRETIVO (Tukey) ---
                             if eh_fatorial:
                                 if interacao_sig:
                                     st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
@@ -1775,6 +1773,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
+                                # --- AQUI ESTÁ O ALERTA VERDE SOLICITADO ---
+                                st.success("✅ **ANÁLISE RECOMENDADA:** Como houve interação significativa, analise esta tabela.")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}_{i}")
@@ -1784,7 +1784,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         
                         # ABA SCOTT-KNOTT
                         with tabs_ind[idx_aba+1]:
-                            # --- ALERTA DIRETIVO (Scott-Knott) ---
                             if eh_fatorial:
                                 if interacao_sig:
                                     st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
@@ -1797,6 +1796,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
+                                # --- AQUI ESTÁ O ALERTA VERDE SOLICITADO ---
+                                st.success("✅ **ANÁLISE RECOMENDADA:** Como houve interação significativa, analise esta tabela.")
                                 st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}_{i}")
@@ -1834,14 +1835,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         
                         # --- ABA 0: MÉDIA GERAL ---
                         with abas[0]: 
-                            # === COACH DE DECISÃO (Média Geral) ===
                             if interacao_significativa:
                                 st.error("🚨 **INTERDIÇÃO:** Interação Significativa Detectada.")
                                 st.markdown("👉 Como o desempenho muda conforme o ambiente, esta **Média Geral não representa a realidade**. Não utilize esta aba para conclusões técnicas. Vá para a aba 'Interação'.")
                             else:
                                 st.success("✅ **APROVADO:** Interação Não Significativa.")
                                 st.markdown("👉 O comportamento é estável. Você **pode e deve** usar esta aba de Média Geral para suas conclusões.")
-                            # ======================================
                             
                             medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
                             reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
@@ -1874,14 +1873,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- ABAS DE LOCAIS INDIVIDUAIS ---
                         for k, loc in enumerate(locais_unicos): 
                             with abas[k+1]:
-                                # === COACH DE DECISÃO (Locais) ===
                                 if interacao_significativa:
                                     st.success(f"✅ **ANÁLISE RECOMENDADA:** Focando em {loc}.")
                                     st.caption("Como houve interação, é correto analisar o que aconteceu especificamente neste local.")
                                 else:
                                     st.warning(f"⚠️ **CUIDADO:** Interação Não Significativa.")
                                     st.caption(f"As diferenças vistas aqui em {loc} podem ser apenas ruído estatístico. A recomendação segura é olhar a Média Geral.")
-                                # =================================
                                 
                                 df_loc = df_proc[df_proc[col_local] == loc]
                                 res_loc = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
@@ -1924,6 +1921,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 st.success("✅ **INTERAÇÃO CONFIRMADA:** O ambiente altera o resultado dos tratamentos.")
                                 st.info("💡 **DICA:** Utilize a matriz abaixo para identificar qual tratamento venceu em cada cenário.")
                                 
+                                # --- AQUI ESTÁ O ALERTA VERDE NA CONJUNTA ---
+                                st.success("✅ **ANÁLISE RECOMENDADA:** Foque sua interpretação na matriz abaixo.")
                                 st.markdown("#### Matriz: Local (Linha) x Tratamento (Coluna)")
                                 df_m_conj = gerar_dataframe_matriz_total(df_proc, col_local, col_trat, tukey_manual_preciso, res_conj['mse'], res_conj['df_resid'])
                                 st.dataframe(df_m_conj)
