@@ -863,7 +863,7 @@ if modo_app == "📊 Análise Estatística":
         else:
             # --- ALTERAÇÃO AQUI: Remoção do (Automático) e (Opcional) ---
             # Agora só mostra as colunas disponíveis, obrigando a seleção de uma
-            col_rep_dic = st.sidebar.selectbox("Coluna de Repetição / ID", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+            col_rep_dic = st.sidebar.selectbox("Coluna de Repetição", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
             cols_ocupadas.append(col_rep_dic)
 
         lista_resps = st.sidebar.multiselect("Variáveis Resposta (Selecione 1 ou mais)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
