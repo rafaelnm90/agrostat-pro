@@ -850,8 +850,9 @@ if modo_app == "📊 Análise Estatística":
         
         cols_trats = st.sidebar.multiselect("Fatores/Tratamentos (Selecione 1 ou mais)", colunas, on_change=reset_analise)
         
+        # --- ALTERAÇÃO AQUI: Rótulo mais rígido ---
         OPCAO_PADRAO = "Local Único (Análise Individual)" 
-        col_local = st.sidebar.selectbox("Local/Ambiente (Opcional)", [OPCAO_PADRAO] + [c for c in colunas if c not in cols_trats], on_change=reset_analise)
+        col_local = st.sidebar.selectbox("Coluna de Local/Ambiente", [OPCAO_PADRAO] + [c for c in colunas if c not in cols_trats], on_change=reset_analise)
         
         col_bloco = None
         cols_ocupadas = cols_trats + [col_local]
@@ -860,8 +861,10 @@ if modo_app == "📊 Análise Estatística":
             col_bloco = st.sidebar.selectbox("Blocos (Repetições)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
             cols_ocupadas.append(col_bloco)
         else:
-            col_rep_dic = st.sidebar.selectbox("Repetições / ID (Opcional)", ["(Automático)"] + [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
-            if col_rep_dic != "(Automático)": cols_ocupadas.append(col_rep_dic)
+            # --- ALTERAÇÃO AQUI: Remoção do (Automático) e (Opcional) ---
+            # Agora só mostra as colunas disponíveis, obrigando a seleção de uma
+            col_rep_dic = st.sidebar.selectbox("Coluna de Repetição / ID", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
+            cols_ocupadas.append(col_rep_dic)
 
         lista_resps = st.sidebar.multiselect("Variáveis Resposta (Selecione 1 ou mais)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
 
