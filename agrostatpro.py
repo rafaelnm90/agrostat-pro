@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V44 - Coach Sinaleiro em Cada Aba)
+# 📂 BLOCO 12: Visualização Completa (V45 - Alertas Sincronizados em Todas as Abas)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1746,18 +1746,29 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         df_tukey_ind = df_tukey_ind[['Media', 'Grupos']]
                         df_sk_ind = df_sk_ind[['Media', 'Grupos']]
 
+                        # --- DETECÇÃO SEGURA DE INTERAÇÃO (FATORIAL) ---
+                        eh_fatorial = len(cols_trats) > 1
+                        interacao_sig = False
+                        if eh_fatorial:
+                            # Busca P-valor da interação na tabela ANOVA já calculada
+                            # Procura linhas com ":"
+                            idx_int = [x for x in res['anova'].index if ":" in str(x)]
+                            if idx_int:
+                                p_int_val = res['anova'].loc[idx_int[-1], 'PR(>F)']
+                                if p_int_val < 0.05: interacao_sig = True
+
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
-                            # --- COACH FATORIAL INDIVIDUAL ---
-                            if len(cols_trats) > 1 and res.get('p_val_interacao', 1.0) < 0.05:
-                                st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
-                            elif len(cols_trats) > 1:
-                                st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
+                            # --- ALERTA SINCRONIZADO (Tukey) ---
+                            if eh_fatorial:
+                                if interacao_sig:
+                                    st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
+                                else:
+                                    st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
                                 
                             st.markdown("#### Ranking Geral (Tukey)")
                             st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
                             
-                            interacao_sig = (len(cols_trats) >= 2 and res.get('p_val_interacao', 1.0) < 0.05)
                             if interacao_sig:
                                 st.markdown("---")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
@@ -1768,8 +1779,16 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         
                         # ABA SCOTT-KNOTT
                         with tabs_ind[idx_aba+1]:
+                            # --- ALERTA SINCRONIZADO (Scott-Knott) ---
+                            if eh_fatorial:
+                                if interacao_sig:
+                                    st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
+                                else:
+                                    st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
+
                             st.markdown("#### Ranking Geral (Scott-Knott)")
                             st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
+                            
                             if interacao_sig:
                                 st.markdown("---")
                                 st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
@@ -1915,7 +1934,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
-
 
 # ==============================================================================
 # 📂 BLOCO 13: Lógica de Fallback (Botões de Erro) e Encerramento
