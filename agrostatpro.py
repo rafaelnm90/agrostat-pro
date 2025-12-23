@@ -1396,12 +1396,16 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     res_model = res['modelo']
                     anova_tab = formatar_tabela_anova(res['anova'])
                     
-                    # --- CORREÇÃO DE SEGURANÇA: Pega P-valor REAL da tabela ---
-                    # Garante que o alerta bata com a tabela, mesmo se o dicionário falhar
+                    # --- CORREÇÃO DE SINCRONIA: Busca P-valor pelo NOME da coluna ---
+                    # Isso garante que o P-valor das Métricas seja O MESMO da Tabela
                     try:
-                        p_final_trat = res['anova'].iloc[0]['PR(>F)']
+                        # Procura o índice que contem o nome do tratamento (ex: 'Cultivar')
+                        nome_trat_alvo = cols_trats[0]
+                        idx_alvo = [x for x in res['anova'].index if nome_trat_alvo in str(x) and ":" not in str(x)][0]
+                        p_final_trat = res['anova'].loc[idx_alvo, 'PR(>F)']
                     except:
-                        p_final_trat = res['p_val'] # Fallback
+                        # Se falhar a busca por nome, pega o primeiro (fallback)
+                        p_final_trat = res['anova'].iloc[0]['PR(>F)']
                         
                     extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
                     st.markdown("#### 📝 Métricas Estatísticas")
@@ -1417,9 +1421,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     anova_tab = formatar_tabela_anova(res_conj['anova'])
                     razao, _, _ = calcular_homogeneidade(df_proc, col_combo, col_resp, col_local, col_bloco, delineamento)
                     
-                    # --- CORREÇÃO DE SEGURANÇA (Conjunta) ---
+                    # --- CORREÇÃO DE SINCRONIA (Conjunta) ---
                     try:
-                         # Busca linha que tem só o tratamento (sem interação e sem local)
                          idx_trat = [x for x in res_conj['anova'].index if col_combo in str(x) and ":" not in str(x)][0]
                          p_final_trat = res_conj['anova'].loc[idx_trat, 'PR(>F)']
                     except:
@@ -1478,7 +1481,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 
                 st.dataframe(anova_tab)
 
-                # ALERTA PRINCIPAL (AGORA EMBAIXO DA TABELA!)
+                # ALERTA PRINCIPAL (EMBAIXO DA TABELA, COM O MESMO P)
                 if p_final_trat < 0.05: 
                     st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
                 else: 
