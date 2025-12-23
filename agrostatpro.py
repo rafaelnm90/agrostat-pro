@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V45 - Alertas Sincronizados em Todas as Abas)
+# 📂 BLOCO 12: Visualização Completa (V46 - Alerta Diretivo de Desdobramento)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1749,22 +1749,26 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- DETECÇÃO SEGURA DE INTERAÇÃO (FATORIAL) ---
                         eh_fatorial = len(cols_trats) > 1
                         interacao_sig = False
+                        
                         if eh_fatorial:
-                            # Busca P-valor da interação na tabela ANOVA já calculada
-                            # Procura linhas com ":"
-                            idx_int = [x for x in res['anova'].index if ":" in str(x)]
+                            # Busca P-valor da interação na tabela ANOVA
+                            # Procura linhas com ":" ou " x " (caso já esteja formatado)
+                            idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
                             if idx_int:
-                                p_int_val = res['anova'].loc[idx_int[-1], 'PR(>F)']
-                                if p_int_val < 0.05: interacao_sig = True
+                                try:
+                                    p_int_val = res['anova'].loc[idx_int[-1], 'PR(>F)']
+                                    if p_int_val < 0.05: interacao_sig = True
+                                except: pass
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
-                            # --- ALERTA SINCRONIZADO (Tukey) ---
+                            # --- ALERTA DIRETIVO (Tukey) ---
                             if eh_fatorial:
                                 if interacao_sig:
-                                    st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
+                                    st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
+                                    st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
                                 else:
-                                    st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
+                                    st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
                                 
                             st.markdown("#### Ranking Geral (Tukey)")
                             st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
@@ -1772,6 +1776,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if interacao_sig:
                                 st.markdown("---")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
+                                st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}_{i}")
                                 fc_tk = [f for f in cols_trats if f != fl_tk][0]
                                 df_m_tk = gerar_dataframe_matriz_total(df_proc, fl_tk, fc_tk, tukey_manual_preciso, res['mse'], res['df_resid'])
@@ -1779,12 +1784,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         
                         # ABA SCOTT-KNOTT
                         with tabs_ind[idx_aba+1]:
-                            # --- ALERTA SINCRONIZADO (Scott-Knott) ---
+                            # --- ALERTA DIRETIVO (Scott-Knott) ---
                             if eh_fatorial:
                                 if interacao_sig:
-                                    st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
+                                    st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
+                                    st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
                                 else:
-                                    st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
+                                    st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
 
                             st.markdown("#### Ranking Geral (Scott-Knott)")
                             st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
@@ -1792,6 +1798,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if interacao_sig:
                                 st.markdown("---")
                                 st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
+                                st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}_{i}")
                                 fc_sk = [f for f in cols_trats if f != fl_sk][0]
                                 df_m_sk = gerar_dataframe_matriz_total(df_proc, fl_sk, fc_sk, scott_knott, res['mse'], res['df_resid'])
@@ -1799,6 +1806,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                         # ABA GRÁFICOS BARRAS
                         with tabs_ind[idx_aba+2]:
+                            if interacao_sig:
+                                st.warning("⚠️ O gráfico de barras geral esconde a interação. Prefira gráficos segmentados.")
+                                
                             sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
                             
                             with sub_tabs_graf[0]:
