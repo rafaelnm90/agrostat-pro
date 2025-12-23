@@ -1485,27 +1485,23 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 
                 st.dataframe(anova_tab)
 
-                # ALERTA PRINCIPAL (Somente se NÃO for Conjunta para evitar redundância)
-                if modo_atual_txt != "CONJUNTA":
+                # ALERTA INTELIGENTE (Prioriza Interação na Conjunta)
+                if modo_atual_txt == "CONJUNTA":
+                    p_int = res_conj.get('p_interacao', 1.0)
+                    
+                    if p_int < 0.05:
+                        # CENÁRIO 1: Interação Significativa (PERIGO)
+                        st.warning(f"⚠️ **Cuidado: Interação Significativa (P={p_int:.4f}).** Embora o fator principal tenha P={p_final_trat:.4e}, o comportamento muda conforme o ambiente. **Não confie na média geral.**")
+                    else:
+                        # CENÁRIO 2: Interação Não Significativa (Aprovado)
+                        st.success(f"✅ **Interação Estável (NS).** O comportamento é consistente. Pode confiar no efeito principal (P={p_final_trat:.4f}).")
+                
+                else:
+                    # Análise Individual (Padrão)
                     if p_final_trat < 0.05: 
                         st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
                     else: 
                         st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
-
-                # --- ALERTAS ESPECÍFICOS DA CONJUNTA (ABAIXO DA TABELA) ---
-                if modo_atual_txt == "CONJUNTA":
-                      # 1. Interação GxA
-                      p_int = res_conj.get('p_interacao', 1.0)
-                      if p_int < 0.05: 
-                          st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
-                      else: 
-                          st.success(f"✅ **Interação GxA Não Significativa (P={p_int:.4f}).**")
-                      
-                      # 2. Tratamento (Geral) - Solicitado: Amarelo se NS
-                      if p_final_trat < 0.05:
-                          st.success(f"✅ **Efeito de Tratamento Significativo (P={p_final_trat:.4f}).**")
-                      else:
-                          st.warning(f"⚠️ **Efeito de Tratamento Não Significativo (P={p_final_trat:.4f}).** Médias estatisticamente iguais na análise conjunta.")
 
                 st.markdown("---")
                 st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
@@ -1623,7 +1619,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 🏁 FIM DO BLOCO 11
 # ==============================================================================
-
 
 # ==============================================================================
 # 📂 BLOCO 12: Visualização Completa (V43 - Com Coach de Interação)
@@ -1808,7 +1803,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- ABA 0: MÉDIA GERAL ---
                         with abas[0]: 
                             if p_int_conj < 0.05:
-                                st.warning("⚠️ Interação Significativa: A Média Geral pode mascarar o desempenho real nos locais.")
+                                # AQUI ESTÁ A CORREÇÃO PEDAGÓGICA SOLICITADA
+                                st.error("🚨 **PARE! Interação Significativa Detectada.**")
+                                st.markdown(f"""
+                                O comportamento dos tratamentos **muda** dependendo do ambiente.
+                                A tabela abaixo é apenas um cálculo matemático (média de tudo), mas **NÃO DEVE** ser usada para recomendação técnica.
+                                
+                                👉 **O que fazer?** Vá para a aba **📈 Interação** ou analise cada local individualmente nas abas ao lado.
+                                """)
                             
                             medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
                             reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
@@ -1914,6 +1916,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
+
 
 # ==============================================================================
 # 📂 BLOCO 13: Lógica de Fallback (Botões de Erro) e Encerramento
