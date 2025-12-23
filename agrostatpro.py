@@ -1476,13 +1476,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 st.markdown("---")
                 st.markdown("### 📊 Análise de Variância (ANOVA)")
                 
-                # ALERTA PRINCIPAL (AQUI ESTÁ ELE!)
+                st.dataframe(anova_tab)
+
+                # ALERTA PRINCIPAL (AGORA EMBAIXO DA TABELA!)
                 if p_final_trat < 0.05: 
                     st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
                 else: 
                     st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
-
-                st.dataframe(anova_tab)
 
                 # --- ALERTAS ESPECÍFICOS DA CONJUNTA (ABAIXO DA TABELA) ---
                 if modo_atual_txt == "CONJUNTA":
