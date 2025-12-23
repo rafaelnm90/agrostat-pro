@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V47 - Alerta Verde no Desdobramento)
+# 📂 BLOCO 12: Visualização Completa (V48 - Texto Melhorado no Desdobramento)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1773,8 +1773,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
-                                # --- AQUI ESTÁ O ALERTA VERDE SOLICITADO ---
-                                st.success("✅ **ANÁLISE RECOMENDADA:** Como houve interação significativa, analise esta tabela.")
+                                # --- TEXTO MELHORADO AQUI ---
+                                st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}_{i}")
@@ -1796,8 +1796,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
-                                # --- AQUI ESTÁ O ALERTA VERDE SOLICITADO ---
-                                st.success("✅ **ANÁLISE RECOMENDADA:** Como houve interação significativa, analise esta tabela.")
+                                # --- TEXTO MELHORADO AQUI ---
+                                st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
                                 st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
                                 fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}_{i}")
