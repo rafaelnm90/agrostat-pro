@@ -286,40 +286,57 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
 
 
 # ==============================================================================
-# 📂 BLOCO 04: Diagnóstico Visual, Transformações e Estilos Gráficos (V42 - Fix Legenda Invisível)
+# 📂 BLOCO 04: Diagnóstico Visual, Transformações e Estilos Gráficos (V43 - RMarkdown Style)
 # ==============================================================================
 def gerar_tabela_diagnostico(p_shapiro, p_bartlett=None, p_levene=None):
-    """Gera tabela Markdown pura (Leve)."""
+    """
+    Gera tabela em formato Markdown puro (Estilo RMarkdown/Pandoc).
+    Isso cria uma visualização limpa, sem índices de dataframe.
+    """
+    # Definição do Cabeçalho e Alinhamento
+    # | Esquerda | Centro | Centro | Esquerda |
     tabela = "| Teste Estatístico | P-valor | Resultado | Conclusão |\n"
-    tabela += "| :--- | :---: | :--- | :--- |\n"
+    tabela += "| :--- | :---: | :---: | :--- |\n"
     
-    # 1. Shapiro
+    # 1. Shapiro-Wilk
     if pd.isna(p_shapiro):
-        p_txt, res_txt, conc_txt = "-", "Não Calculado", "Ignorado ⚪"
+        p_txt, res_txt, conc_txt = "-", "NaN", "Ignorado ⚪"
     elif p_shapiro < 0.05:
-        p_txt, res_txt, conc_txt = f"{p_shapiro:.4f}", "P < 0.05", "Rejeita H0 (**NÃO Normal**) ⚠️"
+        p_txt = f"{p_shapiro:.4f}"
+        res_txt = "P < 0.05"
+        conc_txt = "Rejeita H0 (**NÃO Normal**) ⚠️"
     else:
-        p_txt, res_txt, conc_txt = f"{p_shapiro:.4f}", "P >= 0.05", "Aceita H0 (**Normal**) ✅"
+        p_txt = f"{p_shapiro:.4f}"
+        res_txt = "P ≥ 0.05"
+        conc_txt = "Aceita H0 (**Normal**) ✅"
     tabela += f"| **Shapiro-Wilk** | {p_txt} | {res_txt} | {conc_txt} |\n"
     
-    # 2. Bartlett
+    # 2. Bartlett (Se houver)
     if p_bartlett is not None:
         if pd.isna(p_bartlett):
-            p_txt, res_txt, conc_txt = "-", "Não Calculado", "Ignorado ⚪"
+            p_txt, res_txt, conc_txt = "-", "NaN", "Ignorado ⚪"
         elif p_bartlett < 0.05:
-            p_txt, res_txt, conc_txt = f"{p_bartlett:.4f}", "P < 0.05", "Rejeita H0 (**Heterogêneo**) ⚠️"
+            p_txt = f"{p_bartlett:.4f}"
+            res_txt = "P < 0.05"
+            conc_txt = "Rejeita H0 (**Heterogêneo**) ⚠️"
         else:
-            p_txt, res_txt, conc_txt = f"{p_bartlett:.4f}", "P >= 0.05", "Aceita H0 (**Homogêneo**) ✅"
+            p_txt = f"{p_bartlett:.4f}"
+            res_txt = "P ≥ 0.05"
+            conc_txt = "Aceita H0 (**Homogêneo**) ✅"
         tabela += f"| **Bartlett** | {p_txt} | {res_txt} | {conc_txt} |\n"
 
-    # 3. Levene
+    # 3. Levene (Se houver)
     if p_levene is not None:
         if pd.isna(p_levene):
-            p_txt, res_txt, conc_txt = "-", "Não Calculado", "Ignorado ⚪"
+            p_txt, res_txt, conc_txt = "-", "NaN", "Ignorado ⚪"
         elif p_levene < 0.05:
-            p_txt, res_txt, conc_txt = f"{p_levene:.4f}", "P < 0.05", "Rejeita H0 (**Heterogêneo**) ⚠️"
+            p_txt = f"{p_levene:.4f}"
+            res_txt = "P < 0.05"
+            conc_txt = "Rejeita H0 (**Heterogêneo**) ⚠️"
         else:
-            p_txt, res_txt, conc_txt = f"{p_levene:.4f}", "P >= 0.05", "Aceita H0 (**Homogêneo**) ✅"
+            p_txt = f"{p_levene:.4f}"
+            res_txt = "P ≥ 0.05"
+            conc_txt = "Aceita H0 (**Homogêneo**) ✅"
         tabela += f"| **Levene** | {p_txt} | {res_txt} | {conc_txt} |\n"
     
     return tabela
@@ -382,12 +399,12 @@ def estilizar_grafico_avancado(fig, configs, dados_max=None):
         ),
         font=dict(family=configs['font_family'], size=configs['font_size'], color=configs['cor_texto']),
         showlegend=configs['mostrar_legenda'],
-        # --- CORREÇÃO AQUI: Força a cor da fonte dentro da legenda ---
+        # Configuração da Legenda para evitar texto invisível
         legend=dict(
             title=dict(text=f"<b>{configs['titulo_legenda']}</b>", font=dict(color=configs['cor_texto'])), 
             bgcolor=configs['cor_fundo'], 
             borderwidth=0,
-            font=dict(color=configs['cor_texto']) # ESSENCIAL para corrigir o bug do texto branco
+            font=dict(color=configs['cor_texto']) 
         )
     )
     
@@ -605,152 +622,299 @@ def explaining_ranking(df, method="Tukey"):
 
 
 # ==============================================================================
-# 📂 BLOCO 06: Motores Estatísticos II (Algoritmos Complexos: Tukey, Scott-Knott e Regressão)
+# 📂 BLOCO 06: Funções Estatísticas Principais (V44 - Com Não-Paramétrica)
 # ==============================================================================
-def tukey_manual_preciso(medias, mse, df_resid, n_reps, n_trats):
-    if EXIBIR_LOGS: print(f"🧪 Iniciando Tukey Manual | n_trats: {n_trats} | GL Resíduo: {df_resid}")
 
-    ep = np.sqrt(mse / n_reps)
-    q_crit = studentized_range.ppf(0.95, n_trats, df_resid)
-    hsd = q_crit * ep
+def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
+    """
+    Executa testes não-paramétricos quando os pressupostos da ANOVA falham.
+    - DIC: Kruskal-Wallis
+    - DBC: Friedman
+    """
+    import scipy.stats as stats
     
-    if EXIBIR_LOGS: print(f"📉 DMS (HSD) calculado: {hsd:.4f}")
+    grupos = []
+    trats = df[col_trat].unique()
+    
+    try:
+        if delineamento == "DIC":
+            # Prepara grupos para Kruskal-Wallis
+            for t in trats:
+                grupos.append(df[df[col_trat] == t][col_resp].values)
+            stat, p_val = stats.kruskal(*grupos)
+            nome_teste = "Kruskal-Wallis"
+            
+        else: # DBC
+            # Prepara matriz para Friedman (Tratamentos x Blocos)
+            # Pivotar para garantir ordem correta
+            df_pivot = df.pivot(index=col_bloco, columns=col_trat, values=col_resp).dropna()
+            
+            # Friedman exige matriz completa sem NAs
+            if df_pivot.empty:
+                return "Erro (Dados Incompletos)", 1.0
+            
+            # Extrai colunas como arrays
+            args = [df_pivot[col].values for col in df_pivot.columns]
+            stat, p_val = stats.friedmanchisquare(*args)
+            nome_teste = "Friedman"
+            
+        return nome_teste, p_val
 
-    trats = medias.index.tolist()
-    adj = {t: set() for t in trats}
+    except Exception as e:
+        log_message(f"Erro no teste não-paramétrico: {e}")
+        return "Erro de Cálculo", 1.0
+
+def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
+    """Calcula o teste de Tukey e retorna DataFrame com letras."""
+    from scipy.stats import studentized_range
     
-    sorted_medias = medias.sort_values(ascending=False)
-    vals = sorted_medias.values
-    keys = sorted_medias.index
+    # Ordena médias (decrescente)
+    medias_sorted = medias.sort_values(ascending=False)
+    nomes = medias_sorted.index.tolist()
+    vals = medias_sorted.values
     
-    # Construção do grafo de não-diferença
+    # DMS (Diferença Mínima Significativa)
+    alpha = 0.05
+    q_val = studentized_range.ppf(1 - alpha, n_trats, df_resid)
+    dms = q_val * np.sqrt(mse / r)
+    
+    letras = {}
+    letra_atual = 97 # 'a' em ASCII
+    
+    # Algoritmo de Agrupamento (Letras)
+    cobriu = [False] * len(vals)
+    
     for i in range(len(vals)):
-        for j in range(i + 1, len(vals)):
-            diff = abs(vals[i] - vals[j])
-            if diff < hsd: 
-                t1, t2 = keys[i], keys[j]
-                adj[t1].add(t2)
-                adj[t2].add(t1)
-                
-    cliques = []
-    def bron_kerbosch(R, P, X):
-        if not P and not X: cliques.append(R); return
-        if not P: return
-        try: u = list(P | X)[0]; vizinhos_u = adj[u]
-        except: vizinhos_u = set()
-        for v in list(P - vizinhos_u):
-            bron_kerbosch(R | {v}, P & adj[v], X & adj[v])
-            P.remove(v)
-            X.add(v)
+        if not cobriu[i]:
+            letra_char = chr(letra_atual)
+            letras[nomes[i]] = letras.get(nomes[i], "") + letra_char
+            cobriu[i] = True
             
-    bron_kerbosch(set(), set(trats), set())
-    if not cliques: cliques = [{t} for t in trats]
-    
-    cliques_info = []
-    for c in cliques:
-        media_clique = medias.loc[list(c)].mean()
-        cliques_info.append({'membros': c, 'media': media_clique})
-    
-    cliques_info.sort(key=lambda x: x['media'], reverse=True)
-    
-    mapa_letras = {t: [] for t in trats}
-    for i, clique in enumerate(cliques_info):
-        letra = get_letra_segura(i)
-        for membro in clique['membros']:
-            if letra not in mapa_letras[membro]: 
-                mapa_letras[membro].append(letra)
-                
-    mapa_final = {}
-    for t in trats:
-        mapa_final[t] = "".join(sorted(mapa_letras[t]))
-        
-    df_res = pd.DataFrame({'Media': medias, 'Letras': pd.Series(mapa_final)})
-    df_res.index.name = medias.index.name
-    
-    if EXIBIR_LOGS: print("✅ Tukey finalizado com sucesso.")
-    return df_res.sort_values('Media', ascending=False)
-
-def scott_knott(means, mse, df_resid, reps, n_trats=None):
-    if EXIBIR_LOGS: print(f"🌲 Iniciando Scott-Knott | Médias a agrupar: {len(means)}")
-    
-    results = pd.DataFrame({'Media': means}).sort_values('Media', ascending=False)
-    medias_ordenadas = results['Media'].values
-    indices = results.index
-    
-    def cluster_medias(meds, ind):
-        n = len(meds)
-        if n < 2: return {ind[0]: 1}
-        melhor_b0, corte_idx = -1, -1
-        grand_mean = np.mean(meds)
-        
-        for i in range(1, n):
-            g1, g2 = meds[:i], meds[i:]
-            b0 = i * (np.mean(g1) - grand_mean)**2 + (n-i) * (np.mean(g2) - grand_mean)**2
-            if b0 > melhor_b0: melhor_b0, corte_idx = b0, i
+            # Verifica quem mais entra no grupo desta média
+            for j in range(i + 1, len(vals)):
+                diff = vals[i] - vals[j]
+                if diff < dms: # Não significativo -> Mesma letra
+                    letras[nomes[j]] = letras.get(nomes[j], "") + letra_char
+                    # Nota: Não marcamos cobriu[j] = True aqui porque J pode participar de outros grupos (overlap)
             
-        sigma2 = mse / reps
-        lamb = (np.pi / (2 * (np.pi - 2))) * (melhor_b0 / sigma2)
-        critico = stats.chi2.ppf(0.95, df=n/(np.pi-2)) 
-        
-        if lamb > critico:
-            dict_left = cluster_medias(meds[:corte_idx], ind[:corte_idx])
-            dict_right = cluster_medias(meds[corte_idx:], ind[corte_idx:])
-            max_grp = max(dict_left.values())
-            for k in dict_right: dict_right[k] += max_grp
-            return {**dict_left, **dict_right}
-        else: 
-            return {x: 1 for x in ind}
+            letra_atual += 1
 
-    grupos_dict = cluster_medias(medias_ordenadas, indices)
-    results['Grupo_Num'] = results.index.map(grupos_dict)
-    unique_grps = sorted(results['Grupo_Num'].unique())
-    mapa_letras = {num: get_letra_segura(i) for i, num in enumerate(unique_grps)}
-    results['Grupo'] = results['Grupo_Num'].map(mapa_letras)
-    results.index.name = means.index.name
+    # Formata retorno
+    res_df = pd.DataFrame({
+        'Media': vals,
+        'Letras': [letras[n] for n in nomes]
+    }, index=nomes)
     
-    if EXIBIR_LOGS: print("✅ Scott-Knott finalizado.")
-    return results[['Media', 'Grupo']]
+    return res_df.sort_index()
 
-# --- NOVA FUNÇÃO: MOTOR DE REGRESSÃO ---
-def analisar_regressao_polinomial(df, col_x, col_y):
+def scott_knott(medias, mse, df_resid, r, n_trats):
     """
-    Ajusta modelos Linear e Quadrático usando Statsmodels (OLS).
-    Retorna o melhor modelo com base na significância e R2.
+    Implementação simplificada e robusta do Scott-Knott.
+    Agrupa médias minimizando a soma de quadrados dentro dos grupos.
     """
-    df_reg = df[[col_x, col_y]].dropna().astype(float)
-    x = df_reg[col_x]
-    y = df_reg[col_y]
+    from scipy.stats import f
     
-    resultados = {}
+    medias_sorted = medias.sort_values(ascending=False)
+    vals = medias_sorted.values
+    nomes = medias_sorted.index
     
-    # 1. Modelo Linear: y = ax + b
-    try:
-        mod_lin = ols(f"{col_y} ~ {col_x}", data=df_reg).fit()
-        r2_lin = mod_lin.rsquared
-        p_lin = mod_lin.pvalues[col_x]
-        coefs_lin = mod_lin.params
+    n = len(vals)
+    grupos_indices = [[i for i in range(n)]] # Começa com um grupão
+    
+    # Função para calcular BO (Soma de Quadrados Entre Grupos)
+    def calcular_bo(grupo_idx):
+        if len(grupo_idx) < 2: return 0, -1
         
-        resultados['Linear'] = {
-            'r2': r2_lin, 'p_val': p_lin, 'params': coefs_lin, 'model': mod_lin,
-            'eq': f"y = {coefs_lin[col_x]:.4f}x + {coefs_lin['Intercept']:.4f}"
-        }
-    except: results['Linear'] = None
+        melhor_bo = -1
+        melhor_corte = -1
+        
+        # Tenta cortar em todos os pontos possíveis
+        for i in range(1, len(grupo_idx)):
+            g1 = vals[grupo_idx[:i]]
+            g2 = vals[grupo_idx[i:]]
+            
+            n1, n2 = len(g1), len(g2)
+            m1, m2 = np.mean(g1), np.mean(g2)
+            mg = np.mean(np.concatenate([g1, g2]))
+            
+            bo = n1 * (m1 - mg)**2 + n2 * (m2 - mg)**2
+            if bo > melhor_bo:
+                melhor_bo = bo
+                melhor_corte = i
+        
+        return melhor_bo, melhor_corte
 
-    # 2. Modelo Quadrático: y = ax^2 + bx + c
-    try:
-        mod_quad = ols(f"{col_y} ~ {col_x} + I({col_x}**2)", data=df_reg).fit()
-        r2_quad = mod_quad.rsquared
-        # P-valor do termo quadrático define se vale a pena usar a curva
-        p_quad = mod_quad.pvalues[f"I({col_x} ** 2)"] 
-        coefs_quad = mod_quad.params
-        
-        resultados['Quad'] = {
-            'r2': r2_quad, 'p_val': p_quad, 'params': coefs_quad, 'model': mod_quad,
-            'eq': f"y = {coefs_quad[f'I({col_x} ** 2)']:.4f}x² + {coefs_quad[col_x]:.4f}x + {coefs_quad['Intercept']:.4f}"
-        }
-    except: results['Quad'] = None
+    grupos_finais = []
+    fila = [list(range(n))]
     
-    return resultados, x.min(), x.max()
+    while fila:
+        grupo_atual = fila.pop(0)
+        
+        if len(grupo_atual) == 1:
+            grupos_finais.append(grupo_atual)
+            continue
+            
+        bo, corte = calcular_bo(grupo_atual)
+        
+        # Cálculo do Lambda (Estatística de Teste)
+        sigma2 = mse / r
+        # Aproximação Chi-Quadrado para Scott-Knott
+        lambda_val = (np.pi / (2 * (np.pi - 2))) * (bo / sigma2)
+        
+        # Valor Crítico (Aproximação)
+        v0 = n_trats / (np.pi - 2) # Graus de liberdade aproximados
+        p_val = 1 - f.cdf(lambda_val, v0, df_resid) # Usando F como proxy robusto
+        
+        # Limiar empírico para SK (geralmente mais relaxado que F puro)
+        if p_val < 0.05: # Há diferença, divide
+            g1 = grupo_atual[:corte]
+            g2 = grupo_atual[corte:]
+            fila.insert(0, g2) # Processa depois
+            fila.insert(0, g1) # Processa primeiro
+        else:
+            grupos_finais.append(grupo_atual)
+    
+    # Atribui letras aos grupos
+    dic_res = {}
+    letra_ascii = 97
+    
+    # Ordena grupos pela média (do maior para o menor já que vals está ordenado)
+    # A lógica acima já processa g1 (maiores) antes de g2
+    # Mas garantimos ordenação por média do grupo
+    grupos_finais.sort(key=lambda idxs: np.mean(vals[idxs]), reverse=True)
+    
+    for grp in grupos_finais:
+        letra = chr(letra_ascii)
+        for idx in grp:
+            nome_trat = nomes[idx]
+            dic_res[nome_trat] = letra
+        letra_ascii += 1
+        
+    df_res = pd.DataFrame.from_dict(dic_res, orient='index', columns=['Grupo'])
+    df_res['Media'] = medias
+    df_res = df_res.sort_values('Media', ascending=False)
+    
+    return df_res
+
+def rodar_analise_individual(df_input, col_trat, col_resp, delineamento, col_bloco=None):
+    """Roda ANOVA Individual (DIC ou DBC) usando OLS."""
+    import statsmodels.api as sm
+    from statsmodels.formula.api import ols
+    from scipy import stats
+    
+    # Limpeza e Conversão
+    df_f = df_input.dropna(subset=[col_resp]).copy()
+    
+    # Definição do Modelo
+    if len(col_trat) > 1:
+        # Fatorial: Trat = A * B -> 'A + B + A:B'
+        formula_trat = " * ".join([f"C({c})" for c in col_trat])
+    else:
+        # Unifatorial
+        formula_trat = f"C({col_trat[0]})"
+        
+    if delineamento == "DBC":
+        formula = f"{col_resp} ~ {formula_trat} + C({col_bloco})"
+    else: # DIC
+        formula = f"{col_resp} ~ {formula_trat}"
+        
+    modelo = ols(formula, data=df_f).fit()
+    anova_table = sm.stats.anova_lm(modelo, typ=2)
+    
+    # Teste F do Modelo Global (p_val)
+    # Pega o p-valor do primeiro tratamento listado como proxy principal ou do modelo
+    try:
+        # Tenta pegar o p-valor do fator principal ou interação
+        idx_p = [x for x in anova_table.index if ':' in x or 'C(' in x][0]
+        p_val = anova_table.loc[idx_p, "PR(>F)"]
+    except:
+        p_val = 1.0
+
+    # Pressupostos
+    resid = modelo.resid
+    w_stat, p_shapiro = stats.shapiro(resid)
+    
+    # Homogeneidade (Bartlett ou Levene)
+    # Para fatorial, criamos um grupo único combinado
+    if len(col_trat) > 1:
+        grupos = df_f[col_trat].astype(str).agg('_'.join, axis=1)
+    else:
+        grupos = df_f[col_trat[0]]
+        
+    vals_grupos = [df_f[col_resp][grupos == g].values for g in grupos.unique()]
+    
+    # Bartlett (se normal) ou Levene (se não) - Aqui rodamos os dois para diagnóstico
+    try:
+        b_stat, p_bartlett = stats.bartlett(*vals_grupos)
+    except: p_bartlett = np.nan
+        
+    try:
+        l_stat, p_levene = stats.levene(*vals_grupos)
+    except: p_levene = np.nan
+        
+    return {
+        "modelo": modelo,
+        "anova": anova_table,
+        "shapiro": (w_stat, p_shapiro),
+        "bartlett": (b_stat, p_bartlett),
+        "levene": (l_stat, p_levene),
+        "resid": resid,
+        "p_val": p_val,
+        "mse": modelo.mse_resid,
+        "df_resid": modelo.df_resid
+    }
+
+def rodar_analise_conjunta(df_input, col_trat, col_resp, col_local, delineamento, col_bloco=None):
+    """Roda ANOVA Conjunta."""
+    import statsmodels.api as sm
+    from statsmodels.formula.api import ols
+    from scipy import stats
+    
+    df_f = df_input.dropna(subset=[col_resp]).copy()
+    
+    # Modelo Conjunta: Resp ~ Trat + Local + Trat:Local (+ Bloco/Local se DBC)
+    # Simplificação: Bloco aninhado em Local -> C(Local):C(Bloco)
+    
+    form_base = f"{col_resp} ~ C({col_trat}) * C({col_local})"
+    
+    if delineamento == "DBC":
+        # Bloco dentro de Local
+        form_base += f" + C({col_local}):C({col_bloco})"
+        
+    modelo = ols(form_base, data=df_f).fit()
+    anova_table = sm.stats.anova_lm(modelo, typ=2)
+    
+    # P-valores Chave
+    try:
+        p_interacao = anova_table.loc[f"C({col_trat}):C({col_local})", "PR(>F)"]
+    except: p_interacao = 1.0
+    
+    try:
+        p_trat = anova_table.loc[f"C({col_trat})", "PR(>F)"]
+    except: p_trat = 1.0
+    
+    # Pressupostos (Resíduos Globais)
+    resid = modelo.resid
+    w_stat, p_shapiro = stats.shapiro(resid)
+    
+    # Homogeneidade Global (Tratamento Agrupado)
+    vals_grupos = [df_f[col_resp][df_f[col_trat] == t].values for t in df_f[col_trat].unique()]
+    try: b_stat, p_bartlett = stats.bartlett(*vals_grupos)
+    except: p_bartlett = np.nan
+    try: l_stat, p_levene = stats.levene(*vals_grupos)
+    except: p_levene = np.nan
+        
+    return {
+        "modelo": modelo,
+        "anova": anova_table,
+        "shapiro": (w_stat, p_shapiro),
+        "bartlett": (b_stat, p_bartlett),
+        "levene": (l_stat, p_levene),
+        "p_interacao": p_interacao,
+        "p_trat": p_trat,
+        "mse": modelo.mse_resid,
+        "df_resid": modelo.df_resid
+    }
 # ==============================================================================
 # 🏁 FIM DO BLOCO 06
 # ==============================================================================
