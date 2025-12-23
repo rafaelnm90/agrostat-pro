@@ -616,6 +616,49 @@ def scott_knott(medias, mse, df_resid, r):
 
 def explaining_ranking(df, method="Tukey"):
     return f"Nota: Médias seguidas pela mesma letra/grupo não diferem estatisticamente ({method} 5%)."
+
+def analisar_regressao_polinomial(df, col_trat, col_resp):
+    """
+    Calcula regressão Linear e Quadrática para dados numéricos.
+    Retorna dicionário com métricas e parâmetros para visualização.
+    """
+    from statsmodels.formula.api import ols
+    
+    # Filtra apenas colunas necessárias e remove NaNs
+    df_reg = df[[col_trat, col_resp]].dropna()
+    x_vals = df_reg[col_trat]
+    
+    # Se não houver dados suficientes, retorna vazio
+    if len(df_reg) < 3:
+        return {'Linear': None, 'Quad': None}, 0, 0
+        
+    x_min, x_max = x_vals.min(), x_vals.max()
+    resultados = {'Linear': None, 'Quad': None}
+    
+    # 1. Modelo Linear
+    try:
+        modelo_lin = ols(f"{col_resp} ~ {col_trat}", data=df_reg).fit()
+        resultados['Linear'] = {
+            'r2': modelo_lin.rsquared,
+            'p_val': modelo_lin.f_pvalue,
+            'params': modelo_lin.params,
+            'eq': f"y = {modelo_lin.params.get('Intercept', 0):.4f} + {modelo_lin.params.get(col_trat, 0):.4f}x"
+        }
+    except: pass
+
+    # 2. Modelo Quadrático
+    try:
+        # A sintaxe I(...) protege a operação aritmética na fórmula
+        modelo_quad = ols(f"{col_resp} ~ {col_trat} + I({col_trat}**2)", data=df_reg).fit()
+        resultados['Quad'] = {
+            'r2': modelo_quad.rsquared,
+            'p_val': modelo_quad.f_pvalue,
+            'params': modelo_quad.params,
+            'eq': f"y = {modelo_quad.params.get('Intercept', 0):.4f} + {modelo_quad.params.get(col_trat, 0):.4f}x + {modelo_quad.params.get(f'I({col_trat} ** 2)', 0):.4f}x²"
+        }
+    except: pass
+    
+    return resultados, x_min, x_max
 # ==============================================================================
 # 🏁 FIM DO BLOCO 05
 # ==============================================================================
