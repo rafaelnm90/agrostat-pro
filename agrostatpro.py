@@ -1327,7 +1327,7 @@ elif modo_app == "🎲 Planejamento (Sorteio)":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V28 - Diagnóstico Fatorial Completo)
+# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V29 - Visual Limpo)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1465,16 +1465,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 # ==========================================================
                 
                 if eh_fatorial:
-                    st.markdown("#### 🚦 Diagnóstico dos Fatores")
+                    # REMOVIDO O TÍTULO "Diagnóstico dos Fatores" AQUI
+                    
                     # Pega a tabela ANOVA bruta (numérica) para verificação
                     raw_anova = res_analysis['anova']
                     
                     # Filtra apenas as linhas de interesse (Fatores e Interações)
-                    # Ignora: Residual, Bloco, Intercept
                     ignorar = ['Residual', 'Resíduo', 'Intercept', 'Total']
-                    if 'Bloco' in df.columns: ignorar.append('Bloco') # Nome genérico
+                    if 'Bloco' in df.columns: ignorar.append('Bloco') 
                     
-                    # Identifica linhas válidas na ANOVA
                     linhas_fatores = [idx for idx in raw_anova.index if not any(x in str(idx) for x in ignorar) and 'Bloco' not in str(idx)]
                     
                     for fator in linhas_fatores:
@@ -1494,7 +1493,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 if p_val < 0.05:
                                     st.success(f"✅ **Fator Principal ({nome_display}): Significativo (P={p_val:.4e}).**")
                                 else:
-                                    st.error(f"🔴 **Fator Principal ({nome_display}): Não Significativo (P={p_val:.4f}).**")
+                                    st.error(f"⚠️ **Fator Principal ({nome_display}): Não Significativo (P={p_val:.4f}).**")
                         except: pass
 
                 else:
@@ -1621,7 +1620,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V49 - Gráfico Fatorial Agrupado)
+# 📂 BLOCO 12: Visualização Completa (V50 - Inteligência Gráfica NS)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1749,6 +1748,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- DETECÇÃO SEGURA DE INTERAÇÃO (FATORIAL) ---
                         eh_fatorial = len(cols_trats) > 1
                         interacao_sig = False
+                        
                         if eh_fatorial:
                             idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
                             if idx_int:
@@ -1803,9 +1803,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                         # ABA GRÁFICOS BARRAS
                         with tabs_ind[idx_aba+2]:
-                            if interacao_sig:
-                                st.warning("⚠️ **Dica Visual:** Como há interação, o gráfico abaixo foi ajustado para mostrar os fatores agrupados, facilitando a comparação.")
-                                
+                            # --- COACH DE INTERPRETAÇÃO GRÁFICA ---
+                            if eh_fatorial:
+                                if interacao_sig:
+                                    st.warning("⚠️ **Visualizando Interação:** O gráfico abaixo está agrupado para mostrar como o comportamento muda entre os grupos.")
+                                else:
+                                    st.info("ℹ️ **Sem Interação:** O gráfico mostra os grupos combinados. Note como o padrão das barras tende a ser estável (paralelo). **Dica:** Para ver gráficos dos fatores isolados, selecione apenas 1 fator no menu lateral.")
+
                             sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
                             
                             with sub_tabs_graf[0]:
@@ -1813,25 +1817,18 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 
                                 # --- INTEGRAÇÃO FATORIAL INTELIGENTE ---
                                 if eh_fatorial:
-                                    # Se for fatorial, precisamos "desconstruir" o índice combinado para plotar agrupado
-                                    # O índice atual é "FatorA + FatorB"
                                     df_plot_tk = df_tukey_ind.reset_index().rename(columns={'index': col_trat})
                                     try:
-                                        # Tenta separar a string "A + B" em colunas reais
-                                        # Assume que a string de combinação foi feita com ' + '
                                         split_data = df_plot_tk[col_trat].astype(str).str.split(' + ', expand=True)
                                         if split_data.shape[1] >= 2:
-                                            # Sucesso na separação: Plota Agrupado
                                             df_plot_tk[cols_trats[0]] = split_data[0]
                                             df_plot_tk[cols_trats[1]] = split_data[1]
                                             f_tk = px.bar(df_plot_tk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
                                         else:
-                                            # Fallback se a separação falhar
                                             f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
                                     except:
                                         f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
                                 else:
-                                    # Unifatorial Padrão
                                     f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                 
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
@@ -1848,9 +1845,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         if split_data.shape[1] >= 2:
                                             df_plot_sk[cols_trats[0]] = split_data[0]
                                             df_plot_sk[cols_trats[1]] = split_data[1]
-                                            # Plota Agrupado (Aqui a cor é o Fator 2, não o Grupo, para visualização de interação)
-                                            # Nota: Se o usuário quiser colorir por Grupo estatístico, o agrupamento visual perde sentido.
-                                            # Optei por priorizar a visualização da Interação (Cor = Fator 2) + Texto = Grupo Estatístico.
                                             f_sk = px.bar(df_plot_sk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
                                         else:
                                             f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
