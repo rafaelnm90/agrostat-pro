@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V43 - Com Coach de Interação)
+# 📂 BLOCO 12: Visualização Completa (V44 - Coach Sinaleiro em Cada Aba)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1634,8 +1634,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_coluna)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nc, row in res_comp.iterrows():
-                            # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
-                            letra_val = row.iloc[1] # Assume sempre a segunda coluna (índice 1)
+                            letra_val = row.iloc[1] 
                             dict_upper[(str(nl), str(nc))] = str(letra_val).upper()
 
                     dict_lower = {}
@@ -1646,7 +1645,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_linha)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nl, row in res_comp.iterrows():
-                             # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
                             letra_val = row.iloc[1] 
                             dict_lower[(str(nl), str(nc))] = str(letra_val).lower()
 
@@ -1740,21 +1738,26 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
                         df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
                         
-                        # --- NORMALIZAÇÃO: Garante nome 'Grupos' e Ordem [Media, Grupos] ---
-                        # 1. Renomeia se necessário (Compatibilidade com Cache antigo)
+                        # --- NORMALIZAÇÃO ---
                         if 'Letras' in df_tukey_ind.columns: df_tukey_ind = df_tukey_ind.rename(columns={'Letras': 'Grupos'})
                         if 'Grupo' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
                         if 'Letras' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Letras': 'Grupos'})
                         
-                        # 2. FORÇA A ORDEM DAS COLUNAS (Media na Esquerda)
                         df_tukey_ind = df_tukey_ind[['Media', 'Grupos']]
                         df_sk_ind = df_sk_ind[['Media', 'Grupos']]
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
+                            # --- COACH FATORIAL INDIVIDUAL ---
+                            if len(cols_trats) > 1 and res.get('p_val_interacao', 1.0) < 0.05:
+                                st.error("🚨 **Atenção:** Interação Fatorial Significativa. Este teste de médias gerais pode estar mascarando o comportamento real.")
+                            elif len(cols_trats) > 1:
+                                st.success("✅ **OK:** Interação Fatorial Não Significativa. O teste de médias gerais é válido.")
+                                
                             st.markdown("#### Ranking Geral (Tukey)")
                             st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
-                            interacao_sig = (len(cols_trats) >= 2 and res['p_val'] < 0.05)
+                            
+                            interacao_sig = (len(cols_trats) >= 2 and res.get('p_val_interacao', 1.0) < 0.05)
                             if interacao_sig:
                                 st.markdown("---")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
@@ -1781,7 +1784,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             with sub_tabs_graf[0]:
                                 cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                # Atualizado para text='Grupos'
                                 f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                             
@@ -1799,18 +1801,18 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         titulos_abas = ["📊 Média Geral"] + [f"📍 {loc}" for loc in locais_unicos] + ["📈 Interação"]
                         abas = st.tabs(titulos_abas)
                         p_int_conj = res_conj.get('p_interacao', 1.0)
+                        interacao_significativa = p_int_conj < 0.05
                         
                         # --- ABA 0: MÉDIA GERAL ---
                         with abas[0]: 
-                            if p_int_conj < 0.05:
-                                # AQUI ESTÁ A CORREÇÃO PEDAGÓGICA SOLICITADA
-                                st.error("🚨 **PARE! Interação Significativa Detectada.**")
-                                st.markdown(f"""
-                                O comportamento dos tratamentos **muda** dependendo do ambiente.
-                                A tabela abaixo é apenas um cálculo matemático (média de tudo), mas **NÃO DEVE** ser usada para recomendação técnica.
-                                
-                                👉 **O que fazer?** Vá para a aba **📈 Interação** ou analise cada local individualmente nas abas ao lado.
-                                """)
+                            # === COACH DE DECISÃO (Média Geral) ===
+                            if interacao_significativa:
+                                st.error("🚨 **INTERDIÇÃO:** Interação Significativa Detectada.")
+                                st.markdown("👉 Como o desempenho muda conforme o ambiente, esta **Média Geral não representa a realidade**. Não utilize esta aba para conclusões técnicas. Vá para a aba 'Interação'.")
+                            else:
+                                st.success("✅ **APROVADO:** Interação Não Significativa.")
+                                st.markdown("👉 O comportamento é estável. Você **pode e deve** usar esta aba de Média Geral para suas conclusões.")
+                            # ======================================
                             
                             medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
                             reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
@@ -1819,7 +1821,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
                             df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
 
-                            # --- NORMALIZAÇÃO GERAL ---
                             if 'Letras' in df_tukey_geral.columns: df_tukey_geral = df_tukey_geral.rename(columns={'Letras': 'Grupos'})
                             if 'Grupo' in df_sk_geral.columns: df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
                             
@@ -1844,8 +1845,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- ABAS DE LOCAIS INDIVIDUAIS ---
                         for k, loc in enumerate(locais_unicos): 
                             with abas[k+1]:
-                                if p_int_conj >= 0.05:
-                                    st.warning(f"⚠️ Sem diferença na interação, a análise de {loc} é apenas ilustrativa.")
+                                # === COACH DE DECISÃO (Locais) ===
+                                if interacao_significativa:
+                                    st.success(f"✅ **ANÁLISE RECOMENDADA:** Focando em {loc}.")
+                                    st.caption("Como houve interação, é correto analisar o que aconteceu especificamente neste local.")
+                                else:
+                                    st.warning(f"⚠️ **CUIDADO:** Interação Não Significativa.")
+                                    st.caption(f"As diferenças vistas aqui em {loc} podem ser apenas ruído estatístico. A recomendação segura é olhar a Média Geral.")
+                                # =================================
                                 
                                 df_loc = df_proc[df_proc[col_local] == loc]
                                 res_loc = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
@@ -1860,7 +1867,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 df_sk_loc = scott_knott(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 
-                                # --- NORMALIZAÇÃO LOCAIS ---
                                 if 'Letras' in df_tk_loc.columns: df_tk_loc = df_tk_loc.rename(columns={'Letras': 'Grupos'})
                                 if 'Grupo' in df_sk_loc.columns: df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
                                 
@@ -1882,21 +1888,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
                                     st.plotly_chart(estilizar_grafico_avancado(f_sk_loc, cfg_sk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_sk_{loc}_{col_resp}_{i}")
 
-                        # --- ABA INTERAÇÃO (COM NOVO COACH AUTOMÁTICO) ---
+                        # --- ABA INTERAÇÃO ---
                         with abas[-1]: 
                             trats_inter = sorted(df_proc[col_trat].unique())
-                            if p_int_conj < 0.05:
-                                st.success("✅ Interação Significativa.")
-                                
-                                # --- NOVO: COACH DE INTERPRETAÇÃO ---
-                                st.info("""
-                                💡 **COMO INTERPRETAR:**
-                                A interação significativa indica que **o desempenho dos tratamentos depende do local**.
-                                
-                                1. **Não confie na Média Geral:** Ela esconde as variações locais.
-                                2. **Analise a Matriz abaixo:** Observe as letras maiúsculas (colunas) e minúsculas (linhas).
-                                3. **Recomendação:** Indique o melhor tratamento específico para cada local.
-                                """)
+                            if interacao_significativa:
+                                st.success("✅ **INTERAÇÃO CONFIRMADA:** O ambiente altera o resultado dos tratamentos.")
+                                st.info("💡 **DICA:** Utilize a matriz abaixo para identificar qual tratamento venceu em cada cenário.")
                                 
                                 st.markdown("#### Matriz: Local (Linha) x Tratamento (Coluna)")
                                 df_m_conj = gerar_dataframe_matriz_total(df_proc, col_local, col_trat, tukey_manual_preciso, res_conj['mse'], res_conj['df_resid'])
@@ -1907,7 +1904,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, color_discrete_map=cfg_int['cores_map'])
                                 st.plotly_chart(estilizar_grafico_avancado(f_i, cfg_int), use_container_width=True, key=f"chart_int_{col_resp}_{i}")
                             else: 
-                                st.warning("⚠️ Sem diferença significativa na interação.")
+                                st.warning("⚠️ **ATENÇÃO:** Não houve interação significativa.")
+                                st.markdown("A análise de desdobramento abaixo é meramente ilustrativa. **As conclusões devem ser tomadas na aba 'Média Geral'.**")
+                                
                                 st.caption("Visualização exploratória:")
                                 df_inter = df_proc.groupby([col_trat, col_local])[col_resp].mean().reset_index()
                                 cfg_int = mostrar_editor_grafico(f"int_ns_{col_resp}_{i}", f"Gráfico Exploratório (NS)", col_local, col_resp, usar_cor_unica=False, grupos_sk=trats_inter)
