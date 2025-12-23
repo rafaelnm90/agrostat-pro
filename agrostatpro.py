@@ -1581,7 +1581,7 @@ else: st.info("👈 Faça upload do arquivo para começar.")
 
 
 # ==============================================================================
-# 📂 BLOCO 14: Planejamento (V6 - Identificação e Numeração Personalizada)
+# 📂 BLOCO 14: Planejamento (V9 - Correção UI: Inputs Reativos)
 # ==============================================================================
 import random
 import pandas as pd
@@ -1591,36 +1591,45 @@ if modo_app == "🎲 Planejamento (Sorteio)":
     st.title("🎲 Planejamento Experimental Pro")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
-    with st.form("form_planejamento"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("#### ⚙️ Design")
-            tipo_exp = st.selectbox("Delineamento", ["DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"])
-        with c2:
-            st.markdown("#### 🔢 Repetições")
-            n_reps = st.number_input("Nº de Repetições/Blocos", min_value=2, value=4)
-        with c3:
-            st.markdown("#### 📍 Identificação")
-            nome_ensaio = st.text_input("Nome do Ensaio/Área", value="Ensaio_01")
+    # --- CORREÇÃO: INPUTS DE ESTRUTURA FORA DO FORMULÁRIO (ATUALIZAÇÃO INSTANTÂNEA) ---
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("#### ⚙️ Design")
+        tipo_exp = st.selectbox("Delineamento", ["DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"])
+    with c2:
+        st.markdown("#### 🔢 Repetições")
+        n_reps = st.number_input("Nº de Repetições/Blocos", min_value=2, value=4)
+    with c3:
+        st.markdown("#### 📍 Identificação")
+        nome_ensaio = st.text_input("Nome do Ensaio/Área", value="Ensaio_01")
 
-        st.markdown("---")
+    st.markdown("---")
+    
+    # --- LÓGICA DE NUMERAÇÃO AVANÇADA ---
+    st.markdown("#### 🏷️ Configuração de Numeração")
+    c_num1, c_num2 = st.columns([1, 2])
+    
+    with c_num1:
+        usar_salto = st.checkbox("Saltar numeração por Bloco?", value=False, help="Ex: Bloco 1 (101..), Bloco 2 (201..)")
         
-        c_num1, c_num2 = st.columns([1, 2])
-        with c_num1:
-            num_inicial = st.number_input("Nº Inicial da Parcela", value=1, min_value=0)
-        with c_num2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.caption("A numeração das parcelas começará a partir deste valor.")
+    with c_num2:
+        if usar_salto:
+            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 101, 201... | 1000 gera 1001, 2001...")
+        else:
+            num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
 
-        st.markdown("---")
-        
-        tipo_entrada = st.radio("Como definir os tratamentos?", ["📝 Lista Simples", "✖️ Esquema Fatorial (A x B ...)"], horizontal=True)
-        
+    st.markdown("---")
+    
+    # --- SELETOR DE MODO (FORA DO FORM PARA REATIVIDADE) ---
+    tipo_entrada = st.radio("Como definir os tratamentos?", ["📝 Lista Simples", "✖️ Esquema Fatorial (A x B ...)"], horizontal=True)
+    
+    # --- FORMULÁRIO APENAS PARA DADOS (EVITA RECARREGAR ENQUANTO DIGITA) ---
+    with st.form("form_dados_trats"):
         lista_trats_final = []
+        
+        # LOGICA VISUAL DENTRO DO FORM (Baseada no radio externo)
         if tipo_entrada == "📝 Lista Simples":
             txt_trats = st.text_area("Digite os Tratamentos (um por linha):", "Controle\nT1\nT2\nT3")
-            if txt_trats:
-                lista_trats_final = [t.strip() for t in txt_trats.split('\n') if t.strip()]
         else:
             c_f1, c_f2 = st.columns(2)
             with c_f1:
@@ -1629,15 +1638,6 @@ if modo_app == "🎲 Planejamento (Sorteio)":
             with c_f2:
                 fator2_nome = st.text_input("Nome Fator 2 (Opcional)", "Dose")
                 fator2_niveis = st.text_area("Níveis Fator 2 (um por linha)", "0%\n50%\n100%")
-            
-            if fator1_niveis:
-                l1 = [x.strip() for x in fator1_niveis.split('\n') if x.strip()]
-                l2 = [x.strip() for x in fator2_niveis.split('\n') if x.strip()] if fator2_niveis else []
-                if l2:
-                    combos = list(itertools.product(l1, l2))
-                    lista_trats_final = [f"{a} + {b}" for a, b in combos]
-                else:
-                    lista_trats_final = l1
 
         st.markdown("---")
         st.markdown("#### 📝 Variáveis a Coletar")
@@ -1646,7 +1646,22 @@ if modo_app == "🎲 Planejamento (Sorteio)":
         st.markdown("---")
         submitted = st.form_submit_button("🎲 Gerar Sorteio Oficial")
 
+    # --- PROCESSAMENTO PÓS-SUBMIT ---
     if submitted:
+        # 1. Processa Listas
+        if tipo_entrada == "📝 Lista Simples":
+             if txt_trats:
+                lista_trats_final = [t.strip() for t in txt_trats.split('\n') if t.strip()]
+        else:
+             if fator1_niveis:
+                l1 = [x.strip() for x in fator1_niveis.split('\n') if x.strip()]
+                l2 = [x.strip() for x in fator2_niveis.split('\n') if x.strip()] if fator2_niveis else []
+                if l2:
+                    combos = list(itertools.product(l1, l2))
+                    lista_trats_final = [f"{a} + {b}" for a, b in combos]
+                else:
+                    lista_trats_final = l1
+
         if not lista_trats_final:
             st.error("⚠️ Nenhum tratamento definido.")
         else:
@@ -1663,7 +1678,7 @@ if modo_app == "🎲 Planejamento (Sorteio)":
                 for t in parcelas:
                     contadores[t] += 1
                     info_reps.append(contadores[t])
-                info_blocos = ["-"] * len(parcelas) 
+                # info_blocos não é usado no DIC
 
             else: # DBC
                 for i in range(n_reps):
@@ -1671,18 +1686,33 @@ if modo_app == "🎲 Planejamento (Sorteio)":
                     random.shuffle(bloco) 
                     parcelas.extend(bloco)
                     info_blocos.extend([f"Bloco {i+1}"] * len(bloco))
-                    info_reps.extend([i+1] * len(bloco))
+                    # info_reps também não será usado na saída do DBC
             
-            # --- MONTAGEM DO DATAFRAME COM NUMERAÇÃO INICIAL ---
+            # --- GERAÇÃO DE IDs ---
             total_sorteadas = len(parcelas)
-            ids_personalizados = range(num_inicial, num_inicial + total_sorteadas)
             
+            if usar_salto:
+                ids_personalizados = []
+                n_trats_por_bloco = len(lista_trats_final)
+                
+                for i in range(total_sorteadas):
+                    bloco_idx = i // n_trats_por_bloco
+                    item_idx = (i % n_trats_por_bloco) + 1
+                    novo_id = ((bloco_idx + 1) * salto_val) + item_idx
+                    ids_personalizados.append(novo_id)
+            else:
+                ids_personalizados = range(num_inicial, num_inicial + total_sorteadas)
+            
+            # --- MONTAGEM DINÂMICA DO DATAFRAME ---
             dados_planilha = {"ID_Parcela": ids_personalizados}
             
             if "DBC" in tipo_exp:
+                # DBC: Tem Bloco, NÃO tem Repetição
                 dados_planilha["Bloco"] = info_blocos
+            else:
+                # DIC: Tem Repetição, NÃO tem Bloco
+                dados_planilha["Repeticao"] = info_reps
             
-            dados_planilha["Repeticao"] = info_reps
             dados_planilha["Tratamento"] = parcelas
             
             if tipo_entrada != "📝 Lista Simples" and len(parcelas) > 0 and " + " in str(parcelas[0]):
