@@ -611,8 +611,9 @@ def scott_knott(medias, mse, df_resid, r):
     for i, (letra_velha, _) in enumerate(media_grupos.items()):
         mapa_final[letra_velha] = get_letra_segura(i)
         
-    df_temp['Grupo'] = df_temp['LetraRaw'].map(mapa_final)
-    return df_temp[['Media', 'Grupo']]
+    # --- ALTERAÇÃO AQUI: Nome da coluna pluralizado e Ordem Forçada ---
+    df_temp['Grupos'] = df_temp['LetraRaw'].map(mapa_final)
+    return df_temp[['Media', 'Grupos']] # Retorna Media primeiro, Grupos depois
 
 def explaining_ranking(df, method="Tukey"):
     return f"Nota: Médias seguidas pela mesma letra/grupo não diferem estatisticamente ({method} 5%)."
@@ -1607,7 +1608,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_coluna)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nc, row in res_comp.iterrows():
-                            dict_upper[(str(nl), str(nc))] = str(row.iloc[1]).upper()
+                            # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
+                            letra_val = row.iloc[1] # Assume sempre a segunda coluna (índice 1)
+                            dict_upper[(str(nl), str(nc))] = str(letra_val).upper()
 
                     dict_lower = {}
                     niveis_c = df_input[f_coluna].unique()
@@ -1617,7 +1620,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_linha)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nl, row in res_comp.iterrows():
-                            dict_lower[(str(nl), str(nc))] = str(row.iloc[1]).lower()
+                             # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
+                            letra_val = row.iloc[1] 
+                            dict_lower[(str(nl), str(nc))] = str(letra_val).lower()
 
                     pivot = df_input.pivot_table(index=f_linha, columns=f_coluna, values=col_resp, aggfunc='mean')
                     df_matriz = pivot.copy().astype(object)
@@ -1744,9 +1749,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                             
                             with sub_tabs_graf[1]:
-                                grps_sk = sorted(df_sk_ind['Grupo'].unique())
+                                # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
+                                grps_sk = sorted(df_sk_ind['Grupos'].unique())
                                 cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
-                                f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk['cores_map'])
+                                f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
                                 st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
 
                     # ----------------------------------------------------------
@@ -1780,9 +1786,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                             with sub_abas_geral[1]:
                                 st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                                grps_sk_geral = sorted(df_sk_geral['Grupo'].unique())
+                                # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
+                                grps_sk_geral = sorted(df_sk_geral['Grupos'].unique())
                                 cfg_sk_geral = mostrar_editor_grafico(f"sk_geral_{col_resp}_{i}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_geral)
-                                f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk_geral['cores_map'])
+                                f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_geral['cores_map'])
                                 st.plotly_chart(estilizar_grafico_avancado(f_sk_geral, cfg_sk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_sk_{col_resp}_{i}")
 
                         # --- ABAS DE LOCAIS INDIVIDUAIS ---
@@ -1814,9 +1821,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 
                                 with sub_abas_loc[1]:
                                     st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
-                                    grps_sk_loc = sorted(df_sk_loc['Grupo'].unique())
+                                    # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
+                                    grps_sk_loc = sorted(df_sk_loc['Grupos'].unique())
                                     cfg_sk_loc = mostrar_editor_grafico(f"sk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_loc)
-                                    f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupo', color='Grupo', color_discrete_map=cfg_sk_loc['cores_map'])
+                                    f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
                                     st.plotly_chart(estilizar_grafico_avancado(f_sk_loc, cfg_sk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_sk_{loc}_{col_resp}_{i}")
 
                         # --- ABA INTERAÇÃO ---
