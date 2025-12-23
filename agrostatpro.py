@@ -547,8 +547,9 @@ def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
         idx_start += 1 
             
     # Formata Saída
-    df_res = pd.DataFrame({'Media': vals, 'Letras': [letras[n] for n in nomes]}, index=nomes)
-    return df_res
+    # ALTERAÇÃO: Mudado de 'Letras' para 'Grupos' e forçada a ordem das colunas
+    df_res = pd.DataFrame({'Media': vals, 'Grupos': [letras[n] for n in nomes]}, index=nomes)
+    return df_res[['Media', 'Grupos']]
 
 # OTIMIZAÇÃO: Scott-Knott é recursivo e pesado. Cache essencial.
 @st.cache_data(show_spinner=False)
@@ -611,9 +612,9 @@ def scott_knott(medias, mse, df_resid, r):
     for i, (letra_velha, _) in enumerate(media_grupos.items()):
         mapa_final[letra_velha] = get_letra_segura(i)
         
-    # --- ALTERAÇÃO AQUI: Nome da coluna pluralizado e Ordem Forçada ---
     df_temp['Grupos'] = df_temp['LetraRaw'].map(mapa_final)
-    return df_temp[['Media', 'Grupos']] # Retorna Media primeiro, Grupos depois
+    # GARANTIA FINAL DE ORDEM: Media na esquerda, Grupos na direita
+    return df_temp[['Media', 'Grupos']]
 
 def explaining_ranking(df, method="Tukey"):
     return f"Nota: Médias seguidas pela mesma letra/grupo não diferem estatisticamente ({method} 5%)."
@@ -1608,8 +1609,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_coluna)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nc, row in res_comp.iterrows():
-                            # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
-                            letra_val = row.iloc[1] # Assume sempre a segunda coluna (índice 1)
+                            # Pega a segunda coluna (Grupos)
+                            letra_val = row.iloc[1] 
                             dict_upper[(str(nl), str(nc))] = str(letra_val).upper()
 
                     dict_lower = {}
@@ -1620,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_linha)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nl, row in res_comp.iterrows():
-                             # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
+                             # Pega a segunda coluna (Grupos)
                             letra_val = row.iloc[1] 
                             dict_lower[(str(nl), str(nc))] = str(letra_val).lower()
 
@@ -1714,9 +1715,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
                         df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
                         
-                        # --- CORREÇÃO DE CACHE (Vacina contra KeyError) ---
-                        if 'Grupo' in df_sk_ind.columns and 'Grupos' not in df_sk_ind.columns:
-                            df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
+                        # --- NORMALIZAÇÃO: Garante nome 'Grupos' e Ordem [Media, Grupos] ---
+                        # 1. Renomeia se necessário (Compatibilidade com Cache antigo)
+                        if 'Letras' in df_tukey_ind.columns: df_tukey_ind = df_tukey_ind.rename(columns={'Letras': 'Grupos'})
+                        if 'Grupo' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
+                        if 'Letras' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Letras': 'Grupos'})
+                        
+                        # 2. FORÇA A ORDEM DAS COLUNAS (Media na Esquerda)
+                        df_tukey_ind = df_tukey_ind[['Media', 'Grupos']]
+                        df_sk_ind = df_sk_ind[['Media', 'Grupos']]
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
@@ -1749,7 +1756,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             with sub_tabs_graf[0]:
                                 cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
+                                # Atualizado para text='Grupos'
+                                f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                             
                             with sub_tabs_graf[1]:
@@ -1779,16 +1787,19 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
                             df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
 
-                            # --- CORREÇÃO DE CACHE (Geral) ---
-                            if 'Grupo' in df_sk_geral.columns and 'Grupos' not in df_sk_geral.columns:
-                                df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
+                            # --- NORMALIZAÇÃO GERAL ---
+                            if 'Letras' in df_tukey_geral.columns: df_tukey_geral = df_tukey_geral.rename(columns={'Letras': 'Grupos'})
+                            if 'Grupo' in df_sk_geral.columns: df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
+                            
+                            df_tukey_geral = df_tukey_geral[['Media', 'Grupos']]
+                            df_sk_geral = df_sk_geral[['Media', 'Grupos']]
 
                             sub_abas_geral = st.tabs(["📦 Tukey (Geral)", "📦 Scott-Knott (Geral)"])
                             
                             with sub_abas_geral[0]:
                                 st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
                                 cfg_tk_geral = mostrar_editor_grafico(f"tk_geral_{col_resp}_{i}", "Média Geral (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                f_tk_geral = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
+                                f_tk_geral = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk_geral, cfg_tk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_tk_{col_resp}_{i}")
 
                             with sub_abas_geral[1]:
@@ -1817,16 +1828,19 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 df_sk_loc = scott_knott(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 
-                                # --- CORREÇÃO DE CACHE (Local) ---
-                                if 'Grupo' in df_sk_loc.columns and 'Grupos' not in df_sk_loc.columns:
-                                    df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
+                                # --- NORMALIZAÇÃO LOCAIS ---
+                                if 'Letras' in df_tk_loc.columns: df_tk_loc = df_tk_loc.rename(columns={'Letras': 'Grupos'})
+                                if 'Grupo' in df_sk_loc.columns: df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
+                                
+                                df_tk_loc = df_tk_loc[['Media', 'Grupos']]
+                                df_sk_loc = df_sk_loc[['Media', 'Grupos']]
 
                                 sub_abas_loc = st.tabs(["📊 Tukey", "🎨 Scott-Knott"])
                                 
                                 with sub_abas_loc[0]:
                                     st.dataframe(df_tk_loc.style.format({"Media": "{:.2f}"}))
                                     cfg_tk_loc = mostrar_editor_grafico(f"tk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                    f_tk_loc = px.bar(df_tk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Letras')
+                                    f_tk_loc = px.bar(df_tk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                     st.plotly_chart(estilizar_grafico_avancado(f_tk_loc, cfg_tk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_tk_{loc}_{col_resp}_{i}")
                                 
                                 with sub_abas_loc[1]:
