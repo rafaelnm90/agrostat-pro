@@ -904,15 +904,16 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
 
 
 # ==============================================================================
-# 📂 BLOCO 08: Interface - Setup e CSS
+# 📂 BLOCO 08: Interface - Setup e CSS (V33 - Uploader Full Width MAX)
 # ==============================================================================
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
-# --- FUNÇÃO CSS PARA ROLAGEM DE ABAS ---
+# --- FUNÇÃO CSS PARA ESTILOS GERAIS E CORREÇÕES ---
 def configurar_estilo_abas():
-    log_message("🎨 Aplicando estilos CSS ROBUSTOS para rolagem de abas...")
+    log_message("🎨 Aplicando estilos CSS ROBUSTOS...")
     st.markdown("""
         <style>
+            /* 1. Estilo para Rolagem de Abas (Tabs) */
             div[data-baseweb="tab-list"] {
                 display: flex !important;
                 flex-wrap: nowrap !important;
@@ -927,6 +928,30 @@ def configurar_estilo_abas():
                 min-width: 50px !important;
                 margin-right: 5px !important;
             }
+            
+            /* 2. Customização do Uploader (Botão LARGURA TOTAL) */
+            /* Afeta o container interno (retângulo preto) */
+            [data-testid="stFileUploader"] section {
+                padding: 1rem !important; /* Garante respiro */
+                align-items: stretch !important; /* Força itens a esticar */
+            }
+            
+            /* Força o botão interno a ocupar 100% da largura disponível */
+            [data-testid="stFileUploader"] button {
+                width: 100% !important;
+                max-width: 100% !important;
+                display: block !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+            }
+            
+            /* Garante que o texto 'Drag and drop' continue centralizado */
+            [data-testid="stFileUploader"] section > div:first-child {
+                text-align: center !important;
+                margin-bottom: 10px !important;
+            }
+
+            /* 3. Personalização da Barra de Rolagem */
             div[data-baseweb="tab-list"]::-webkit-scrollbar {
                 height: 12px !important;
             }
@@ -1084,7 +1109,7 @@ elif modo_app == "🎲 Planejamento (Sorteio)":
 
 
 # ==============================================================================
-# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V25 - Aviso Conjunta Topo)
+# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V26 - Ordem Visual Ajustada)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1210,18 +1235,18 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 else:
                     st.success(f"✅ **Herdabilidade Alta ({extras['h2']:.2f}):** A maior parte da variação é genética.")
 
-                # D) R2
+                # D) NOTA PEDAGÓGICA (MovidA para cá - Imediatamente abaixo da Herdabilidade)
+                if p_final_trat >= 0.05:
+                    if "🔴" in extras['ac_class'] or "🔴" in extras['h2_class']:
+                        st.info("💡 **Nota de Interpretação:** Você viu alertas vermelhos de Acurácia/Herdabilidade acima? **Fique tranquilo.** Como o Teste F não detectou diferença significativa (P ≥ 0.05), é matematicamente esperado que esses índices sejam baixos ou zero, pois não há variância genética 'sobrando' para calculá-los.")
+
+                # E) R2 (MovidO para baixo da Nota)
                 if extras['r2'] < 0.50:
                     st.error(f"⚠️ **R² Baixo ({extras['r2']:.2f}):** O modelo explica menos de 50% da variação total.")
                 elif extras['r2'] < 0.70:
                     st.warning(f"⚠️ **R² Regular ({extras['r2']:.2f}):** O modelo explica pouco da variação total (Atenção).")
                 else:
                     st.success(f"✅ **R² Bom ({extras['r2']:.2f}):** O modelo apresenta um bom ajuste aos dados.")
-
-                # E) NOTA PEDAGÓGICA (Só aparece se P >= 0.05 E índices ruins)
-                if p_final_trat >= 0.05:
-                    if "🔴" in extras['ac_class'] or "🔴" in extras['h2_class']:
-                        st.info("💡 **Nota de Interpretação:** Você viu alertas vermelhos de Acurácia/Herdabilidade acima? **Fique tranquilo.** Como o Teste F não detectou diferença significativa (P ≥ 0.05), é matematicamente esperado que esses índices sejam baixos ou zero, pois não há variância genética 'sobrando' para calculá-los.")
 
                 # --- EXIBIÇÃO FINAL DO RESULTADO ANOVA (TOPO) ---
                 if p_final_trat < 0.05: st.success(f"✅ **Diferença Significativa (P < 0.05).** Rejeita-se a Hipótese Nula (H0).")
