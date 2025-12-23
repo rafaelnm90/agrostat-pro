@@ -1395,7 +1395,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     p_shap, p_bart, p_lev = res['shapiro'][1], res['bartlett'][1], res['levene'][1]
                     res_model = res['modelo']
                     anova_tab = formatar_tabela_anova(res['anova'])
-                    p_final_trat = res['p_val']
+                    
+                    # --- CORREÇÃO DE SEGURANÇA: Pega P-valor REAL da tabela ---
+                    # Garante que o alerta bata com a tabela, mesmo se o dicionário falhar
+                    try:
+                        p_final_trat = res['anova'].iloc[0]['PR(>F)']
+                    except:
+                        p_final_trat = res['p_val'] # Fallback
+                        
                     extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
                     st.markdown("#### 📝 Métricas Estatísticas")
                     txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, cols_trats[0], df_proc[col_resp].mean(), p_final_trat)
@@ -1409,7 +1416,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     res_model = res_conj['modelo']
                     anova_tab = formatar_tabela_anova(res_conj['anova'])
                     razao, _, _ = calcular_homogeneidade(df_proc, col_combo, col_resp, col_local, col_bloco, delineamento)
-                    p_final_trat = res_conj['p_trat']
+                    
+                    # --- CORREÇÃO DE SEGURANÇA (Conjunta) ---
+                    try:
+                         # Busca linha que tem só o tratamento (sem interação e sem local)
+                         idx_trat = [x for x in res_conj['anova'].index if col_combo in str(x) and ":" not in str(x)][0]
+                         p_final_trat = res_conj['anova'].loc[idx_trat, 'PR(>F)']
+                    except:
+                         p_final_trat = res_conj['p_trat']
+
                     extras = calcular_metricas_extras(anova_tab, res_model, col_combo)
                     st.markdown("#### 📝 Métricas Estatísticas")
                     txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_final_trat, razao)
@@ -1458,24 +1473,29 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     st.success(f"✅ **R² Bom ({extras['r2']:.2f}):** O modelo apresenta um bom ajuste aos dados.")
 
                 # --- EXIBIÇÃO FINAL DO RESULTADO ANOVA (TOPO) ---
-                if p_final_trat < 0.05: st.success(f"✅ **Diferença Significativa (P < 0.05).** Rejeita-se a Hipótese Nula (H0).")
-                else: st.error(f"⚠️ **Não Significativo (P >= 0.05).** Aceita-se H0 (Médias estatisticamente iguais).")
-
+                st.markdown("---")
                 st.markdown("### 📊 Análise de Variância (ANOVA)")
+                
+                # ALERTA PRINCIPAL (AQUI ESTÁ ELE!)
+                if p_final_trat < 0.05: 
+                    st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
+                else: 
+                    st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
+
                 st.dataframe(anova_tab)
 
                 # --- ALERTAS ESPECÍFICOS DA CONJUNTA (ABAIXO DA TABELA) ---
                 if modo_atual_txt == "CONJUNTA":
-                     # 1. Interação GxA
-                     p_int = res_conj.get('p_interacao', 1.0)
-                     if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
-                     else: st.success(f"✅ **Interação GxA Não Significativa.**")
-                     
-                     # 2. Tratamento (Geral) - Solicitado: Amarelo se NS
-                     if p_final_trat < 0.05:
-                         st.success(f"✅ **Efeito de Tratamento Significativo (P={p_final_trat:.4f}).**")
-                     else:
-                         st.warning(f"⚠️ **Efeito de Tratamento Não Significativo (P={p_final_trat:.4f}).** Médias estatisticamente iguais na análise conjunta.")
+                      # 1. Interação GxA
+                      p_int = res_conj.get('p_interacao', 1.0)
+                      if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
+                      else: st.success(f"✅ **Interação GxA Não Significativa.**")
+                      
+                      # 2. Tratamento (Geral) - Solicitado: Amarelo se NS
+                      if p_final_trat < 0.05:
+                          st.success(f"✅ **Efeito de Tratamento Significativo (P={p_final_trat:.4f}).**")
+                      else:
+                          st.warning(f"⚠️ **Efeito de Tratamento Não Significativo (P={p_final_trat:.4f}).** Médias estatisticamente iguais na análise conjunta.")
 
                 st.markdown("---")
                 st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
