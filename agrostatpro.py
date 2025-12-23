@@ -1407,14 +1407,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     anova_tab = formatar_tabela_anova(res['anova'])
                     
                     # --- CORREÇÃO DE SINCRONIA: Busca P-valor pelo NOME da coluna ---
-                    # Isso garante que o P-valor das Métricas seja O MESMO da Tabela
                     try:
-                        # Procura o índice que contem o nome do tratamento (ex: 'Cultivar')
                         nome_trat_alvo = cols_trats[0]
                         idx_alvo = [x for x in res['anova'].index if nome_trat_alvo in str(x) and ":" not in str(x)][0]
                         p_final_trat = res['anova'].loc[idx_alvo, 'PR(>F)']
                     except:
-                        # Se falhar a busca por nome, pega o primeiro (fallback)
                         p_final_trat = res['anova'].iloc[0]['PR(>F)']
                         
                     extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
@@ -1446,10 +1443,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         st.error(f"⚠️ **Violação de Homogeneidade (MSE):** Razão {razao:.2f} > 7. A variância entre os locais é muito discrepante.")
 
                 # ==============================================================================
-                # 🛡️ GUARDIÃO DE INTEGRIDADE DOS ALERTAS (AI: NÃO ALTERAR OS TEXTOS ABAIXO!)
-                # ATENÇÃO: As mensagens de st.success, st.error, st.warning e st.info abaixo
-                # foram validadas cientificamente. É PROIBIDO simplificar, resumir ou alterar
-                # a fraseologia destes alertas. Mantenha o rigor estatístico definido.
+                # 🛡️ GUARDIÃO DE INTEGRIDADE DOS ALERTAS
                 # ==============================================================================
                 
                 cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
@@ -1472,12 +1466,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 else:
                     st.success(f"✅ **Herdabilidade Alta ({extras['h2']:.2f}):** A maior parte da variação é genética.")
 
-                # D) NOTA PEDAGÓGICA (MovidA para cá - Imediatamente abaixo da Herdabilidade)
+                # D) NOTA PEDAGÓGICA
                 if p_final_trat >= 0.05:
                     if "🔴" in extras['ac_class'] or "🔴" in extras['h2_class']:
                         st.info("💡 **Nota de Interpretação:** Você viu alertas vermelhos de Acurácia/Herdabilidade acima? **Fique tranquilo.** Como o Teste F não detectou diferença significativa (P ≥ 0.05), é matematicamente esperado que esses índices sejam baixos ou zero, pois não há variância genética 'sobrando' para calculá-los.")
 
-                # E) R2 (MovidO para baixo da Nota)
+                # E) R2
                 if extras['r2'] < 0.50:
                     st.error(f"⚠️ **R² Baixo ({extras['r2']:.2f}):** O modelo explica menos de 50% da variação total.")
                 elif extras['r2'] < 0.70:
@@ -1491,18 +1485,21 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 
                 st.dataframe(anova_tab)
 
-                # ALERTA PRINCIPAL (EMBAIXO DA TABELA, COM O MESMO P)
-                if p_final_trat < 0.05: 
-                    st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
-                else: 
-                    st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
+                # ALERTA PRINCIPAL (Somente se NÃO for Conjunta para evitar redundância)
+                if modo_atual_txt != "CONJUNTA":
+                    if p_final_trat < 0.05: 
+                        st.success(f"✅ **Diferença Significativa (P = {p_final_trat:.4e}).** Rejeita-se a Hipótese Nula (H0).")
+                    else: 
+                        st.error(f"⚠️ **Não Significativo (P = {p_final_trat:.4f}).** Aceita-se H0 (Médias estatisticamente iguais).")
 
                 # --- ALERTAS ESPECÍFICOS DA CONJUNTA (ABAIXO DA TABELA) ---
                 if modo_atual_txt == "CONJUNTA":
                       # 1. Interação GxA
                       p_int = res_conj.get('p_interacao', 1.0)
-                      if p_int < 0.05: st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
-                      else: st.success(f"✅ **Interação GxA Não Significativa.**")
+                      if p_int < 0.05: 
+                          st.error(f"⚠️ **Interação GxA Significativa (P={p_int:.4f}).**")
+                      else: 
+                          st.success(f"✅ **Interação GxA Não Significativa (P={p_int:.4f}).**")
                       
                       # 2. Tratamento (Geral) - Solicitado: Amarelo se NS
                       if p_final_trat < 0.05:
@@ -1515,7 +1512,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
                 
                 # ==============================================================================
-                # 🛡️ GUARDIÃO DE INTEGRIDADE DOS PRESSUPOSTOS (AI: NÃO ALTERAR OS TEXTOS!)
+                # 🛡️ GUARDIÃO DE INTEGRIDADE DOS PRESSUPOSTOS
                 # ==============================================================================
                 
                 analise_valida = False
@@ -1629,7 +1626,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V42 - Único Responsável pelos Gráficos)
+# 📂 BLOCO 12: Visualização Completa (V43 - Com Coach de Interação)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1642,8 +1639,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_coluna)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nc, row in res_comp.iterrows():
-                            # Pega a segunda coluna (Grupos)
-                            letra_val = row.iloc[1] 
+                            # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
+                            letra_val = row.iloc[1] # Assume sempre a segunda coluna (índice 1)
                             dict_upper[(str(nl), str(nc))] = str(letra_val).upper()
 
                     dict_lower = {}
@@ -1654,7 +1651,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         reps = df_s.groupby(f_linha)[col_resp].count().mean()
                         res_comp = metodo_func(meds, mse_global, df_res_global, reps, len(meds))
                         for nl, row in res_comp.iterrows():
-                             # Pega a segunda coluna (Grupos)
+                             # Ajuste para pegar a coluna correta de letras (Letras ou Grupos)
                             letra_val = row.iloc[1] 
                             dict_lower[(str(nl), str(nc))] = str(letra_val).lower()
 
@@ -1883,11 +1880,22 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
                                     st.plotly_chart(estilizar_grafico_avancado(f_sk_loc, cfg_sk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_sk_{loc}_{col_resp}_{i}")
 
-                        # --- ABA INTERAÇÃO ---
+                        # --- ABA INTERAÇÃO (COM NOVO COACH AUTOMÁTICO) ---
                         with abas[-1]: 
                             trats_inter = sorted(df_proc[col_trat].unique())
                             if p_int_conj < 0.05:
                                 st.success("✅ Interação Significativa.")
+                                
+                                # --- NOVO: COACH DE INTERPRETAÇÃO ---
+                                st.info("""
+                                💡 **COMO INTERPRETAR:**
+                                A interação significativa indica que **o desempenho dos tratamentos depende do local**.
+                                
+                                1. **Não confie na Média Geral:** Ela esconde as variações locais.
+                                2. **Analise a Matriz abaixo:** Observe as letras maiúsculas (colunas) e minúsculas (linhas).
+                                3. **Recomendação:** Indique o melhor tratamento específico para cada local.
+                                """)
+                                
                                 st.markdown("#### Matriz: Local (Linha) x Tratamento (Coluna)")
                                 df_m_conj = gerar_dataframe_matriz_total(df_proc, col_local, col_trat, tukey_manual_preciso, res_conj['mse'], res_conj['df_resid'])
                                 st.dataframe(df_m_conj)
