@@ -1621,7 +1621,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V48 - Texto Melhorado no Desdobramento)
+# 📂 BLOCO 12: Visualização Completa (V49 - Gráfico Fatorial Agrupado)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1749,9 +1749,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- DETECÇÃO SEGURA DE INTERAÇÃO (FATORIAL) ---
                         eh_fatorial = len(cols_trats) > 1
                         interacao_sig = False
-                        
                         if eh_fatorial:
-                            # Busca P-valor da interação na tabela ANOVA
                             idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
                             if idx_int:
                                 try:
@@ -1773,7 +1771,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
-                                # --- TEXTO MELHORADO AQUI ---
                                 st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
                                 st.subheader("🔠 Matriz de Desdobramento (Tukey)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
@@ -1796,7 +1793,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             if interacao_sig:
                                 st.markdown("---")
-                                # --- TEXTO MELHORADO AQUI ---
                                 st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
                                 st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
                                 st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
@@ -1808,19 +1804,61 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # ABA GRÁFICOS BARRAS
                         with tabs_ind[idx_aba+2]:
                             if interacao_sig:
-                                st.warning("⚠️ O gráfico de barras geral esconde a interação. Prefira gráficos segmentados.")
+                                st.warning("⚠️ **Dica Visual:** Como há interação, o gráfico abaixo foi ajustado para mostrar os fatores agrupados, facilitando a comparação.")
                                 
                             sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
                             
                             with sub_tabs_graf[0]:
                                 cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                
+                                # --- INTEGRAÇÃO FATORIAL INTELIGENTE ---
+                                if eh_fatorial:
+                                    # Se for fatorial, precisamos "desconstruir" o índice combinado para plotar agrupado
+                                    # O índice atual é "FatorA + FatorB"
+                                    df_plot_tk = df_tukey_ind.reset_index().rename(columns={'index': col_trat})
+                                    try:
+                                        # Tenta separar a string "A + B" em colunas reais
+                                        # Assume que a string de combinação foi feita com ' + '
+                                        split_data = df_plot_tk[col_trat].astype(str).str.split(' + ', expand=True)
+                                        if split_data.shape[1] >= 2:
+                                            # Sucesso na separação: Plota Agrupado
+                                            df_plot_tk[cols_trats[0]] = split_data[0]
+                                            df_plot_tk[cols_trats[1]] = split_data[1]
+                                            f_tk = px.bar(df_plot_tk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
+                                        else:
+                                            # Fallback se a separação falhar
+                                            f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
+                                    except:
+                                        f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
+                                else:
+                                    # Unifatorial Padrão
+                                    f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                             
                             with sub_tabs_graf[1]:
                                 grps_sk = sorted(df_sk_ind['Grupos'].unique())
                                 cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
-                                f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                
+                                # --- INTEGRAÇÃO FATORIAL INTELIGENTE (SCOTT-KNOTT) ---
+                                if eh_fatorial:
+                                    df_plot_sk = df_sk_ind.reset_index().rename(columns={'index': col_trat})
+                                    try:
+                                        split_data = df_plot_sk[col_trat].astype(str).str.split(' + ', expand=True)
+                                        if split_data.shape[1] >= 2:
+                                            df_plot_sk[cols_trats[0]] = split_data[0]
+                                            df_plot_sk[cols_trats[1]] = split_data[1]
+                                            # Plota Agrupado (Aqui a cor é o Fator 2, não o Grupo, para visualização de interação)
+                                            # Nota: Se o usuário quiser colorir por Grupo estatístico, o agrupamento visual perde sentido.
+                                            # Optei por priorizar a visualização da Interação (Cor = Fator 2) + Texto = Grupo Estatístico.
+                                            f_sk = px.bar(df_plot_sk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
+                                        else:
+                                            f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                    except:
+                                        f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                else:
+                                    f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                
                                 st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
 
                     # ----------------------------------------------------------
@@ -1920,9 +1958,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if interacao_significativa:
                                 st.success("✅ **INTERAÇÃO CONFIRMADA:** O ambiente altera o resultado dos tratamentos.")
                                 st.info("💡 **DICA:** Utilize a matriz abaixo para identificar qual tratamento venceu em cada cenário.")
-                                
-                                # --- AQUI ESTÁ O ALERTA VERDE NA CONJUNTA ---
                                 st.success("✅ **ANÁLISE RECOMENDADA:** Foque sua interpretação na matriz abaixo.")
+                                
                                 st.markdown("#### Matriz: Local (Linha) x Tratamento (Coluna)")
                                 df_m_conj = gerar_dataframe_matriz_total(df_proc, col_local, col_trat, tukey_manual_preciso, res_conj['mse'], res_conj['df_resid'])
                                 st.dataframe(df_m_conj)
