@@ -1713,6 +1713,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         # --- CÁLCULO DOS TESTES DE MÉDIAS ---
                         df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
                         df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
+                        
+                        # --- CORREÇÃO DE CACHE (Vacina contra KeyError) ---
+                        if 'Grupo' in df_sk_ind.columns and 'Grupos' not in df_sk_ind.columns:
+                            df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
@@ -1749,7 +1753,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                             
                             with sub_tabs_graf[1]:
-                                # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
                                 grps_sk = sorted(df_sk_ind['Grupos'].unique())
                                 cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
                                 f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
@@ -1776,6 +1779,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
                             df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
 
+                            # --- CORREÇÃO DE CACHE (Geral) ---
+                            if 'Grupo' in df_sk_geral.columns and 'Grupos' not in df_sk_geral.columns:
+                                df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
+
                             sub_abas_geral = st.tabs(["📦 Tukey (Geral)", "📦 Scott-Knott (Geral)"])
                             
                             with sub_abas_geral[0]:
@@ -1786,7 +1793,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                             with sub_abas_geral[1]:
                                 st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                                # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
                                 grps_sk_geral = sorted(df_sk_geral['Grupos'].unique())
                                 cfg_sk_geral = mostrar_editor_grafico(f"sk_geral_{col_resp}_{i}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_geral)
                                 f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_geral['cores_map'])
@@ -1811,6 +1817,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 df_sk_loc = scott_knott(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
                                 
+                                # --- CORREÇÃO DE CACHE (Local) ---
+                                if 'Grupo' in df_sk_loc.columns and 'Grupos' not in df_sk_loc.columns:
+                                    df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
+
                                 sub_abas_loc = st.tabs(["📊 Tukey", "🎨 Scott-Knott"])
                                 
                                 with sub_abas_loc[0]:
@@ -1821,7 +1831,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 
                                 with sub_abas_loc[1]:
                                     st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
-                                    # --- ALTERAÇÃO: Usa coluna 'Grupos' no plural ---
                                     grps_sk_loc = sorted(df_sk_loc['Grupos'].unique())
                                     cfg_sk_loc = mostrar_editor_grafico(f"sk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_loc)
                                     f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
