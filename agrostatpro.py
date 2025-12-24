@@ -2068,11 +2068,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         if st.button("Voltar ao Original", key=f"reset_sqrt_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
-else: st.info("👈 Faça upload do arquivo para começar.")
+elif modo_app == "📊 Análise Estatística":
+    st.info("👈 Faça upload do arquivo para começar.")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 13
 # ==============================================================================
-
 
 # ==============================================================================
 # 📂 BLOCO 14: Planejamento (V9 - Correção UI: Inputs Reativos)
@@ -2236,4 +2236,22 @@ if modo_app == "🎲 Planejamento (Sorteio)":
             )
 # ==============================================================================
 # 🏁 FIM DO BLOCO 14
+# ==============================================================================
+
+# ==============================================================================
+# 📂 BLOCO 15: Rodapé e Créditos (GLOBAL)
+# ==============================================================================
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 20px;">
+        <hr style="margin-bottom: 15px; border-top: 1px solid #eee;">
+        Developed by <b>Rafael Novais de Miranda</b><br>
+        📧 rafaelnovaismiranda@gmail.com | 📱 (34) 9.99777-9966
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+# ==============================================================================
+# 🏁 FIM DO BLOCO 15
 # ==============================================================================
