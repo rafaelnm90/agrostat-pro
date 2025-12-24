@@ -1232,7 +1232,7 @@ st.sidebar.markdown("# 🌾 AgroStat Pro")
 # Define qual "parte" do aplicativo será exibida
 modo_app = st.sidebar.radio(
     "Navegação:",
-    ("📊 Análise Estatística", "🎲 Planejamento (Sorteio)"),
+    ("📊 Análise Estatística", "🎲 Sorteio Experimental"),
     index=0
 )
 
