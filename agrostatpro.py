@@ -40,7 +40,7 @@ def log_message(mensagem):
 
 
 # ==============================================================================
-# 📂 BLOCO 02: Limpeza, Formatação e Utilitários Básicos (CORRIGIDO)
+# 📂 BLOCO 02: Utilitários Básicos (Limpeza e Conversão)
 # ==============================================================================
 def limpar_e_converter_dados(df, col_resp):
     """
@@ -84,7 +84,14 @@ def formatar_numero(valor, decimais=2):
             return f"{v:.{decimais}f}"
     except:
         return str(valor)
+# ==============================================================================
+# 🏁 FIM DO BLOCO 02
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 03: Formatação de Tabelas e Classificações
+# ==============================================================================
 def formatar_tabela_anova(anova_df):
     cols_map = {'sum_sq': 'SQ', 'df': 'GL', 'F': 'Fcalc', 'PR(>F)': 'P-valor'}
     df = anova_df.rename(columns=cols_map)
@@ -147,12 +154,12 @@ def classificar_cv(cv):
     elif cv < 30: return "🟠 Alto (Baixa Precisão)"
     else: return "🔴 Muito Alto (Inadequado)"
 # ==============================================================================
-# 🏁 FIM DO BLOCO 02
+# 🏁 FIM DO BLOCO 03
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 03: Cálculo de Métricas e Relatórios de Texto (V2 - Régua Rigorosa)
+# 📂 BLOCO 04: Cálculo de Métricas e Relatórios de Texto
 # ==============================================================================
 def calcular_metricas_extras(anova_df, modelo, col_trat):
     """Calcula métricas, define classes e retorna o valor F bruto para diagnóstico."""
@@ -291,12 +298,12 @@ def gerar_relatorio_metricas(anova_df, modelo, col_trat, media_real, p_valor, ra
 
     return texto
 # ==============================================================================
-# 🏁 FIM DO BLOCO 03
+# 🏁 FIM DO BLOCO 04
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 04: Diagnóstico Visual, Transformações e Estilos Gráficos (V43 - RMarkdown Style)
+# 📂 BLOCO 05: Diagnóstico Visual e Transformações
 # ==============================================================================
 def gerar_tabela_diagnostico(p_shapiro, p_bartlett=None, p_levene=None):
     """
@@ -366,8 +373,14 @@ def aplicar_transformacao(df, col_resp, tipo_transformacao):
         df_copy[nova_col] = np.sqrt(df_copy[col_resp].where(df_copy[col_resp] >= 0, 0))
         
     return df_copy, nova_col
+# ==============================================================================
+# 🏁 FIM DO BLOCO 05
+# ==============================================================================
 
-# --- FUNÇÕES VISUAIS GLOBAIS ---
+
+# ==============================================================================
+# 📂 BLOCO 06: Estilos Gráficos e Editor Visual
+# ==============================================================================
 def estilizar_grafico_avancado(fig, configs, dados_max=None):
     range_y = None
     if dados_max is not None:
@@ -501,12 +514,12 @@ def mostrar_editor_grafico(key_prefix, titulo_padrao, label_x_padrao, label_y_pa
             submit_button = st.form_submit_button("🔄 Atualizar Gráfico")
     return {"cor_fundo": cor_fundo, "cor_texto": cor_texto, "cor_grade": cor_grade, "cor_subgrade": cor_subgrade, "cor_barras": cor_barras, "cores_map": cores_map, "mapa_nomes_grupos": mapa_nomes_grupos, "titulo_custom": titulo_custom, "label_y": label_y, "label_x": label_x, "titulo_legenda": titulo_legenda, "font_family": font_family, "font_size": font_size, "altura": altura, "mostrar_grid": mostrar_grid, "mostrar_subgrade": mostrar_subgrade, "estilo_subgrade": estilo_subgrade, "estilo_borda": estilo_borda, "mostrar_ticks": mostrar_ticks, "posicao_texto": mapa_pos[pos_escolhida], "letras_negrito": letras_negrito, "mostrar_legenda": mostrar_legenda}
 # ==============================================================================
-# 🏁 FIM DO BLOCO 04
+# 🏁 FIM DO BLOCO 06
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 05: Motores Estatísticos II (Testes de Médias - COM CACHE ⚡)
+# 📂 BLOCO 07: Motores Estatísticos (Tukey/Scott-Knott - Cache)
 # ==============================================================================
 
 # OTIMIZAÇÃO: O cálculo do Tukey é pesado. Salvamos o resultado em cache.
@@ -628,7 +641,14 @@ def scott_knott(medias, mse, df_resid, r):
 
 def explaining_ranking(df, method="Tukey"):
     return f"Nota: Médias seguidas pela mesma letra/grupo não diferem estatisticamente ({method} 5%)."
+# ==============================================================================
+# 🏁 FIM DO BLOCO 07
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 08: Motores Estatísticos (Regressão)
+# ==============================================================================
 def analisar_regressao_polinomial(df, col_trat, col_resp):
     """
     Calcula regressão Linear e Quadrática para dados numéricos.
@@ -672,14 +692,13 @@ def analisar_regressao_polinomial(df, col_trat, col_resp):
     
     return resultados, x_min, x_max
 # ==============================================================================
-# 🏁 FIM DO BLOCO 05
+# 🏁 FIM DO BLOCO 08
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 06: Funções Estatísticas Principais (V44 - Com Não-Paramétrica)
+# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos)
 # ==============================================================================
-
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     """
     Executa testes não-paramétricos quando os pressupostos da ANOVA falham.
@@ -718,6 +737,16 @@ def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=Non
     except Exception as e:
         log_message(f"Erro no teste não-paramétrico: {e}")
         return "Erro de Cálculo", 1.0
+# ==============================================================================
+# 🏁 FIM DO BLOCO 09
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 10: Motores Estatísticos IV (Implementações Auxiliares)
+# ==============================================================================
+# Nota: Implementações alternativas de Tukey/Scott-Knott (Sem Cache)
+# e outras funções auxiliares mantidas conforme script original.
 
 def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
     """Calcula o teste de Tukey e retorna DataFrame com letras."""
@@ -971,12 +1000,12 @@ def rodar_analise_conjunta(df_input, col_trat, col_resp, col_local, delineamento
         "df_resid": modelo.df_resid
     }
 # ==============================================================================
-# 🏁 FIM DO BLOCO 06
+# 🏁 FIM DO BLOCO 10
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 07: Motores Estatísticos III (Rodar Modelos OLS - COM CACHE ⚡)
+# 📂 BLOCO 11: Motores Estatísticos V (OLS Principais - Com Cache)
 # ==============================================================================
 from patsy.contrasts import Sum
 
@@ -1086,7 +1115,7 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
             
     return res
 
-# --- NOVA FUNÇÃO ADICIONADA: CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
+# --- CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
 @st.cache_data(show_spinner=False)
 def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
     """
@@ -1118,12 +1147,12 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
     
     return razao, max_mse, min_mse
 # ==============================================================================
-# 🏁 FIM DO BLOCO 07
+# 🏁 FIM DO BLOCO 11
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 08: Interface - Setup e CSS (V33 - Uploader Full Width MAX)
+# 📂 BLOCO 12: Interface - Setup e CSS
 # ==============================================================================
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
@@ -1189,12 +1218,12 @@ configurar_estilo_abas()
 
 st.title("🌱 AgroStat Pro: Análises Estatísticas")
 # ==============================================================================
-# 🏁 FIM DO BLOCO 08
+# 🏁 FIM DO BLOCO 12
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Interface - Sidebar (V25 - Botão Centralizado/Expandido)
+# 📂 BLOCO 13: Interface - Sidebar e Menu
 # ==============================================================================
 # Substituí a imagem externa (quebrava) por um título nativo robusto
 st.sidebar.markdown("# 🌾 AgroStat Pro") 
@@ -1323,11 +1352,12 @@ elif modo_app == "🎲 Planejamento (Sorteio)":
     # Reseta o estado de processamento da análise para não misturar as coisas
     st.session_state['processando'] = False 
 # ==============================================================================
-# 🏁 FIM DO BLOCO 09
+# 🏁 FIM DO BLOCO 13
 # ==============================================================================
 
+
 # ==============================================================================
-# 📂 BLOCO 10: Execução, Alertas Rigorosos e Tabelas (V29 - Visual Limpo)
+# 📂 BLOCO 14: Execução Principal - Setup e Métricas
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1454,7 +1484,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     st.warning(f"⚠️ **R² Regular ({extras['r2']:.2f}):** O modelo explica pouco da variação total (Atenção).")
                 else:
                     st.success(f"✅ **R² Bom ({extras['r2']:.2f}):** O modelo apresenta um bom ajuste aos dados.")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 14
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 15: Execução Principal - ANOVA e Diagnósticos
+# ==============================================================================
                 # --- EXIBIÇÃO FINAL DO RESULTADO ANOVA (TOPO) ---
                 st.markdown("---")
                 st.markdown("### 📊 Análise de Variância (ANOVA)")
@@ -1541,11 +1578,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 col_trat = col_combo 
                 # ==========================================================
 # ==============================================================================
-# 🏁 FIM DO BLOCO 10
+# 🏁 FIM DO BLOCO 15
 # ==============================================================================
 
+
 # ==============================================================================
-# 📂 BLOCO 11: A "Árvore de Decisão Universal" (Lógica de Pressupostos)
+# 📂 BLOCO 16: Árvore de Decisão Universal (Lógica de Pressupostos)
 # ==============================================================================
                 # Esta lógica agora se aplica tanto para DIC, DBC Individual quanto Conjunta.
                 # As variáveis p_shap, p_bart, p_lev foram definidas no Bloco 10.
@@ -1616,11 +1654,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             st.error("🚨 Violação Crítica Total: Os dados não possuem distribuição normal (Shapiro-Wilk reprovado) e as variâncias são heterogêneas (testes de Bartlett e Levene foram reprovados). A ANOVA é inválida. Transforme os dados ou use estatística não-paramétrica.")
                             analise_valida = False
 # ==============================================================================
-# 🏁 FIM DO BLOCO 11
+# 🏁 FIM DO BLOCO 16
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V51 - Com Trava de Segurança ANOVA NS)
+# 📂 BLOCO 17: Visualização Completa - Funções Auxiliares
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1668,7 +1706,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         {'selector': 'td', 'props': [('text-align', 'center !important'), ('vertical-align', 'middle !important')]}
                     ])
                     return styler
+# ==============================================================================
+# 🏁 FIM DO BLOCO 17
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 18: Visualização - Análise Individual
+# ==============================================================================
                 # ----------------------------------------------------------
                 # LÓGICA DE VISUALIZAÇÃO (SÓ RODA SE A ANÁLISE FOR VÁLIDA)
                 # ----------------------------------------------------------
@@ -1878,7 +1923,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
                                     
                                     st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 18
+# ==============================================================================
 
+
+# ==============================================================================
+# 📂 BLOCO 19: Visualização - Análise Conjunta
+# ==============================================================================
                     # ----------------------------------------------------------
                     # CENÁRIO B: ANÁLISE CONJUNTA
                     # ----------------------------------------------------------
@@ -2013,11 +2065,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 f_i = px.line(df_inter, x=col_local, y=col_resp, color=col_trat, markers=True, color_discrete_map=cfg_int['cores_map'])
                                 st.plotly_chart(estilizar_grafico_avancado(f_i, cfg_int), use_container_width=True, key=f"chart_int_ns_{col_resp}_{i}")
 # ==============================================================================
-# 🏁 FIM DO BLOCO 12
+# 🏁 FIM DO BLOCO 19
 # ==============================================================================
 
+
 # ==============================================================================
-# 📂 BLOCO 13: Lógica de Fallback (Botões de Erro) e Encerramento
+# 📂 BLOCO 20: Lógica de Fallback (Botões de Erro) e Encerramento
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2112,11 +2165,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 elif modo_app == "📊 Análise Estatística":
     st.info("👈 Faça upload do arquivo para começar.")
 # ==============================================================================
-# 🏁 FIM DO BLOCO 13
+# 🏁 FIM DO BLOCO 20
 # ==============================================================================
 
+
 # ==============================================================================
-# 📂 BLOCO 14: Planejamento (V9 - Correção UI: Inputs Reativos)
+# 📂 BLOCO 21: Planejamento (Sorteio Experimental)
 # ==============================================================================
 import random
 import pandas as pd
@@ -2276,11 +2330,11 @@ if modo_app == "🎲 Planejamento (Sorteio)":
                 mime="text/csv"
             )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 14
+# 🏁 FIM DO BLOCO 21
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 15: Rodapé e Créditos (GLOBAL)
+# 📂 BLOCO 22: Rodapé e Créditos (GLOBAL)
 # ==============================================================================
 st.markdown("---")
 st.markdown(
@@ -2294,5 +2348,5 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 15
+# 🏁 FIM DO BLOCO 22
 # ==============================================================================
