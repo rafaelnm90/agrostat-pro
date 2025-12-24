@@ -2176,7 +2176,7 @@ import random
 import pandas as pd
 import itertools
 
-if modo_app == "🎲 Sorteio Experimental":
+if modo_app == "🎲 Planejamento (Sorteio)":
     st.title("🎲 Planejamento Experimental Pro")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
@@ -2203,7 +2203,7 @@ if modo_app == "🎲 Sorteio Experimental":
         
     with c_num2:
         if usar_salto:
-            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 101, 201... | 1000 gera 1001, 2001...")
+            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 100, 200... | 1000 gera 1000, 2000...")
         else:
             num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
 
@@ -2286,7 +2286,8 @@ if modo_app == "🎲 Sorteio Experimental":
                 
                 for i in range(total_sorteadas):
                     bloco_idx = i // n_trats_por_bloco
-                    item_idx = (i % n_trats_por_bloco) + 1
+                    # ALTERAÇÃO: Removido o "+ 1" para começar do zero (Ex: 100, 200)
+                    item_idx = (i % n_trats_por_bloco) 
                     novo_id = ((bloco_idx + 1) * salto_val) + item_idx
                     ids_personalizados.append(novo_id)
             else:
