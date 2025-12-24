@@ -1347,7 +1347,7 @@ if modo_app == "📊 Análise Estatística":
                 st.rerun()
 
 # --- MODO 2: PLANEJAMENTO (Novo) ---
-elif modo_app == "🎲 Planejamento (Sorteio)":
+elif modo_app == "🎲 Sorteio Experimental":
     st.sidebar.info("🛠️ Você está no modo de Pré-Experimento. Configure os tratamentos e sorteie o croqui na tela principal.")
     # Reseta o estado de processamento da análise para não misturar as coisas
     st.session_state['processando'] = False 
@@ -2176,7 +2176,7 @@ import random
 import pandas as pd
 import itertools
 
-if modo_app == "🎲 Planejamento (Sorteio)":
+if modo_app == "🎲 Sorteio Experimental":
     st.title("🎲 Planejamento Experimental Pro")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
