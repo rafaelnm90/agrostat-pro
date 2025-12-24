@@ -2199,11 +2199,12 @@ if modo_app == "🎲 Planejamento (Sorteio)":
     c_num1, c_num2 = st.columns([1, 2])
     
     with c_num1:
-        usar_salto = st.checkbox("Saltar numeração por Bloco?", value=False, help="Ex: Bloco 1 (101..), Bloco 2 (201..)")
+        usar_salto = st.checkbox("Saltar numeração por Bloco?", value=False, help="Ex: Bloco 1 (100..), Bloco 2 (200..)")
         
     with c_num2:
         if usar_salto:
-            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 100, 200... | 1000 gera 1000, 2000...")
+            # CORREÇÃO: Texto de ajuda atualizado para refletir o início em 00
+            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 100, 101... | 1000 gera 1000, 1001...")
         else:
             num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
 
@@ -2286,8 +2287,11 @@ if modo_app == "🎲 Planejamento (Sorteio)":
                 
                 for i in range(total_sorteadas):
                     bloco_idx = i // n_trats_por_bloco
-                    # ALTERAÇÃO: Removido o "+ 1" para começar do zero (Ex: 100, 200)
+                    # --- CORREÇÃO MATEMÁTICA AQUI ---
+                    # Removemos o +1 do índice. Agora vai de 0 a N-1.
+                    # Ex: Salto 100 -> Bloco 1 (1*100) + 0 = 100.
                     item_idx = (i % n_trats_por_bloco) 
+                    
                     novo_id = ((bloco_idx + 1) * salto_val) + item_idx
                     ids_personalizados.append(novo_id)
             else:
