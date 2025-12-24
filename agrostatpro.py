@@ -1620,7 +1620,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 12: Visualização Completa (V50 - Inteligência Gráfica NS)
+# 📂 BLOCO 12: Visualização Completa (V51 - Com Trava de Segurança ANOVA NS)
 # ==============================================================================
                 # --- FUNÇÃO INTERNA: GERADOR DE MATRIZ DE DESDOBRAMENTO ---
                 def gerar_dataframe_matriz_total(df_input, f_linha, f_coluna, metodo_func, mse_global, df_res_global):
@@ -1759,101 +1759,125 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
-                            if eh_fatorial:
-                                if interacao_sig:
-                                    st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
-                                    st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
-                                else:
-                                    st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
+                            # --- TRAVA DE SEGURANÇA (ANOVA NS) ---
+                            if res['p_val'] > 0.05:
+                                st.warning("⚠️ **ANOVA Não Significativa (P > 0.05):** Pela regra estatística, as médias são consideradas iguais. A separação de letras abaixo não possui validade científica.")
+                                container_tk = st.expander("✏️ Visualizar Teste mesmo assim (Não Recomendado)")
+                            else:
+                                container_tk = st.container()
+
+                            with container_tk:
+                                if eh_fatorial:
+                                    if interacao_sig:
+                                        st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
+                                        st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
+                                    else:
+                                        st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
+                                    
+                                st.markdown("#### Ranking Geral (Tukey)")
+                                st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
                                 
-                            st.markdown("#### Ranking Geral (Tukey)")
-                            st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
-                            
-                            if interacao_sig:
-                                st.markdown("---")
-                                st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
-                                st.subheader("🔠 Matriz de Desdobramento (Tukey)")
-                                st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
-                                fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}_{i}")
-                                fc_tk = [f for f in cols_trats if f != fl_tk][0]
-                                df_m_tk = gerar_dataframe_matriz_total(df_proc, fl_tk, fc_tk, tukey_manual_preciso, res['mse'], res['df_resid'])
-                                st.dataframe(df_m_tk)
+                                if interacao_sig:
+                                    st.markdown("---")
+                                    st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
+                                    st.subheader("🔠 Matriz de Desdobramento (Tukey)")
+                                    st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
+                                    fl_tk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_tk_l_{col_resp}_{i}")
+                                    fc_tk = [f for f in cols_trats if f != fl_tk][0]
+                                    df_m_tk = gerar_dataframe_matriz_total(df_proc, fl_tk, fc_tk, tukey_manual_preciso, res['mse'], res['df_resid'])
+                                    st.dataframe(df_m_tk)
                         
                         # ABA SCOTT-KNOTT
                         with tabs_ind[idx_aba+1]:
-                            if eh_fatorial:
-                                if interacao_sig:
-                                    st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
-                                    st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
-                                else:
-                                    st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
+                            # --- TRAVA DE SEGURANÇA (ANOVA NS) ---
+                            if res['p_val'] > 0.05:
+                                st.warning("⚠️ **ANOVA Não Significativa (P > 0.05):** Pela regra estatística, as médias são consideradas iguais. O agrupamento visual abaixo não possui validade científica.")
+                                container_sk = st.expander("✏️ Visualizar Teste mesmo assim (Não Recomendado)")
+                            else:
+                                container_sk = st.container()
 
-                            st.markdown("#### Ranking Geral (Scott-Knott)")
-                            st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
-                            
-                            if interacao_sig:
-                                st.markdown("---")
-                                st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
-                                st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
-                                st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
-                                fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}_{i}")
-                                fc_sk = [f for f in cols_trats if f != fl_sk][0]
-                                df_m_sk = gerar_dataframe_matriz_total(df_proc, fl_sk, fc_sk, scott_knott, res['mse'], res['df_resid'])
-                                st.dataframe(df_m_sk)
+                            with container_sk:
+                                if eh_fatorial:
+                                    if interacao_sig:
+                                        st.error("🚨 **PARE: Interação Significativa.** O Ranking Geral abaixo NÃO deve ser usado para recomendação.")
+                                        st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
+                                    else:
+                                        st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
+
+                                st.markdown("#### Ranking Geral (Scott-Knott)")
+                                st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
+                                
+                                if interacao_sig:
+                                    st.markdown("---")
+                                    st.success("✅ **ANÁLISE RECOMENDADA:** Devido à interação significativa, a interpretação correta deve ser feita na **Matriz de Desdobramento** abaixo.")
+                                    st.subheader("🔠 Matriz de Desdobramento (Scott-Knott)")
+                                    st.caption("Analise as letras maiúsculas (colunas) e minúsculas (linhas).")
+                                    fl_sk = st.selectbox("Fator na Linha", cols_trats, key=f"mat_sk_l_{col_resp}_{i}")
+                                    fc_sk = [f for f in cols_trats if f != fl_sk][0]
+                                    df_m_sk = gerar_dataframe_matriz_total(df_proc, fl_sk, fc_sk, scott_knott, res['mse'], res['df_resid'])
+                                    st.dataframe(df_m_sk)
 
                         # ABA GRÁFICOS BARRAS
                         with tabs_ind[idx_aba+2]:
-                            # --- COACH DE INTERPRETAÇÃO GRÁFICA ---
-                            if eh_fatorial:
-                                if interacao_sig:
-                                    st.warning("⚠️ **Visualizando Interação:** O gráfico abaixo está agrupado para mostrar como o comportamento muda entre os grupos.")
-                                else:
-                                    st.info("ℹ️ **Sem Interação:** O gráfico mostra os grupos combinados. Note como o padrão das barras tende a ser estável (paralelo). **Dica:** Para ver gráficos dos fatores isolados, selecione apenas 1 fator no menu lateral.")
+                            # --- TRAVA DE SEGURANÇA (ANOVA NS) ---
+                            if res['p_val'] > 0.05:
+                                st.warning("⚠️ **Alerta Estatístico:** Como a ANOVA não foi significativa, as diferenças visuais nas barras são fruto do acaso (erro aleatório), e as letras 'a, b' não devem ser consideradas.")
+                                container_graf = st.expander("✏️ Visualizar Gráficos mesmo assim")
+                            else:
+                                container_graf = st.container()
 
-                            sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
-                            
-                            with sub_tabs_graf[0]:
-                                cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                
-                                # --- INTEGRAÇÃO FATORIAL INTELIGENTE ---
+                            with container_graf:
+                                # --- COACH DE INTERPRETAÇÃO GRÁFICA ---
                                 if eh_fatorial:
-                                    df_plot_tk = df_tukey_ind.reset_index().rename(columns={'index': col_trat})
-                                    try:
-                                        split_data = df_plot_tk[col_trat].astype(str).str.split(' + ', expand=True)
-                                        if split_data.shape[1] >= 2:
-                                            df_plot_tk[cols_trats[0]] = split_data[0]
-                                            df_plot_tk[cols_trats[1]] = split_data[1]
-                                            f_tk = px.bar(df_plot_tk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
-                                        else:
+                                    if interacao_sig:
+                                        st.warning("⚠️ **Visualizando Interação:** O gráfico abaixo está agrupado para mostrar como o comportamento muda entre os grupos.")
+                                    else:
+                                        st.info("ℹ️ **Sem Interação:** O gráfico mostra os grupos combinados. Note como o padrão das barras tende a ser estável (paralelo). **Dica:** Para ver gráficos dos fatores isolados, selecione apenas 1 fator no menu lateral.")
+
+                                sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
+                                
+                                with sub_tabs_graf[0]:
+                                    cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
+                                    
+                                    # --- INTEGRAÇÃO FATORIAL INTELIGENTE ---
+                                    if eh_fatorial:
+                                        df_plot_tk = df_tukey_ind.reset_index().rename(columns={'index': col_trat})
+                                        try:
+                                            split_data = df_plot_tk[col_trat].astype(str).str.split(' + ', expand=True)
+                                            if split_data.shape[1] >= 2:
+                                                df_plot_tk[cols_trats[0]] = split_data[0]
+                                                df_plot_tk[cols_trats[1]] = split_data[1]
+                                                f_tk = px.bar(df_plot_tk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
+                                            else:
+                                                f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
+                                        except:
                                             f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
-                                    except:
-                                        f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
-                                else:
-                                    f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                    else:
+                                        f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                    
+                                    st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                                 
-                                st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
-                            
-                            with sub_tabs_graf[1]:
-                                grps_sk = sorted(df_sk_ind['Grupos'].unique())
-                                cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
-                                
-                                # --- INTEGRAÇÃO FATORIAL INTELIGENTE (SCOTT-KNOTT) ---
-                                if eh_fatorial:
-                                    df_plot_sk = df_sk_ind.reset_index().rename(columns={'index': col_trat})
-                                    try:
-                                        split_data = df_plot_sk[col_trat].astype(str).str.split(' + ', expand=True)
-                                        if split_data.shape[1] >= 2:
-                                            df_plot_sk[cols_trats[0]] = split_data[0]
-                                            df_plot_sk[cols_trats[1]] = split_data[1]
-                                            f_sk = px.bar(df_plot_sk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
-                                        else:
+                                with sub_tabs_graf[1]:
+                                    grps_sk = sorted(df_sk_ind['Grupos'].unique())
+                                    cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
+                                    
+                                    # --- INTEGRAÇÃO FATORIAL INTELIGENTE (SCOTT-KNOTT) ---
+                                    if eh_fatorial:
+                                        df_plot_sk = df_sk_ind.reset_index().rename(columns={'index': col_trat})
+                                        try:
+                                            split_data = df_plot_sk[col_trat].astype(str).str.split(' + ', expand=True)
+                                            if split_data.shape[1] >= 2:
+                                                df_plot_sk[cols_trats[0]] = split_data[0]
+                                                df_plot_sk[cols_trats[1]] = split_data[1]
+                                                f_sk = px.bar(df_plot_sk, x=cols_trats[0], y='Media', color=cols_trats[1], text='Grupos', barmode='group')
+                                            else:
+                                                f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                        except:
                                             f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
-                                    except:
-                                        f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
-                                else:
-                                    f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
-                                
-                                st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
+                                    else:
+                                        f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                    
+                                    st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
 
                     # ----------------------------------------------------------
                     # CENÁRIO B: ANÁLISE CONJUNTA
@@ -1874,33 +1898,45 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 st.success("✅ **APROVADO:** Interação Não Significativa.")
                                 st.markdown("👉 O comportamento é estável. Você **pode e deve** usar esta aba de Média Geral para suas conclusões.")
                             
-                            medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
-                            reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
-                            max_val_geral = medias_geral.max()
-
-                            df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
-                            df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
-
-                            if 'Letras' in df_tukey_geral.columns: df_tukey_geral = df_tukey_geral.rename(columns={'Letras': 'Grupos'})
-                            if 'Grupo' in df_sk_geral.columns: df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
+                            # --- TRAVA DE SEGURANÇA (P-Valor Tratamento Geral) ---
+                            # Se P-valor do tratamento na conjunta for > 0.05 E não houve interação
+                            p_trat_geral = res_conj.get('p_trat', 1.0)
                             
-                            df_tukey_geral = df_tukey_geral[['Media', 'Grupos']]
-                            df_sk_geral = df_sk_geral[['Media', 'Grupos']]
+                            exibir_conteudo_geral = True
+                            if p_trat_geral > 0.05:
+                                st.warning(f"⚠️ **ANOVA Não Significativa (P={p_trat_geral:.4f}):** As médias gerais são estatisticamente iguais.")
+                                container_geral = st.expander("✏️ Visualizar Média Geral mesmo assim")
+                            else:
+                                container_geral = st.container()
 
-                            sub_abas_geral = st.tabs(["📦 Tukey (Geral)", "📦 Scott-Knott (Geral)"])
-                            
-                            with sub_abas_geral[0]:
-                                st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
-                                cfg_tk_geral = mostrar_editor_grafico(f"tk_geral_{col_resp}_{i}", "Média Geral (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                f_tk_geral = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
-                                st.plotly_chart(estilizar_grafico_avancado(f_tk_geral, cfg_tk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_tk_{col_resp}_{i}")
+                            with container_geral:
+                                medias_geral = df_proc.groupby(col_trat)[col_resp].mean()
+                                reps_geral = df_proc.groupby(col_trat)[col_resp].count().mean()
+                                max_val_geral = medias_geral.max()
 
-                            with sub_abas_geral[1]:
-                                st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
-                                grps_sk_geral = sorted(df_sk_geral['Grupos'].unique())
-                                cfg_sk_geral = mostrar_editor_grafico(f"sk_geral_{col_resp}_{i}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_geral)
-                                f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_geral['cores_map'])
-                                st.plotly_chart(estilizar_grafico_avancado(f_sk_geral, cfg_sk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_sk_{col_resp}_{i}")
+                                df_tukey_geral = tukey_manual_preciso(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
+                                df_sk_geral = scott_knott(medias_geral, res_conj['mse'], res_conj['df_resid'], reps_geral, len(medias_geral))
+
+                                if 'Letras' in df_tukey_geral.columns: df_tukey_geral = df_tukey_geral.rename(columns={'Letras': 'Grupos'})
+                                if 'Grupo' in df_sk_geral.columns: df_sk_geral = df_sk_geral.rename(columns={'Grupo': 'Grupos'})
+                                
+                                df_tukey_geral = df_tukey_geral[['Media', 'Grupos']]
+                                df_sk_geral = df_sk_geral[['Media', 'Grupos']]
+
+                                sub_abas_geral = st.tabs(["📦 Tukey (Geral)", "📦 Scott-Knott (Geral)"])
+                                
+                                with sub_abas_geral[0]:
+                                    st.dataframe(df_tukey_geral.style.format({"Media": "{:.2f}"}))
+                                    cfg_tk_geral = mostrar_editor_grafico(f"tk_geral_{col_resp}_{i}", "Média Geral (Tukey)", col_trat, col_resp, usar_cor_unica=True)
+                                    f_tk_geral = px.bar(df_tukey_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                    st.plotly_chart(estilizar_grafico_avancado(f_tk_geral, cfg_tk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_tk_{col_resp}_{i}")
+
+                                with sub_abas_geral[1]:
+                                    st.dataframe(df_sk_geral.style.format({"Media": "{:.2f}"}))
+                                    grps_sk_geral = sorted(df_sk_geral['Grupos'].unique())
+                                    cfg_sk_geral = mostrar_editor_grafico(f"sk_geral_{col_resp}_{i}", "Média Geral (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_geral)
+                                    f_sk_geral = px.bar(df_sk_geral.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_geral['cores_map'])
+                                    st.plotly_chart(estilizar_grafico_avancado(f_sk_geral, cfg_sk_geral, max_val_geral), use_container_width=True, key=f"chart_geral_sk_{col_resp}_{i}")
 
                         # --- ABAS DE LOCAIS INDIVIDUAIS ---
                         for k, loc in enumerate(locais_unicos): 
@@ -1915,36 +1951,41 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 df_loc = df_proc[df_proc[col_local] == loc]
                                 res_loc = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
                                 
-                                if res_loc['p_val'] >= 0.05:
-                                    st.warning(f"⚠️ Sem diferença significativa (Teste F) em {loc}.")
+                                # --- TRAVA DE SEGURANÇA POR LOCAL ---
+                                if res_loc['p_val'] > 0.05:
+                                    st.warning(f"⚠️ **ANOVA Não Significativa em {loc} (P={res_loc['p_val']:.4f}).** Médias estatisticamente iguais.")
+                                    container_loc = st.expander(f"✏️ Visualizar Dados de {loc} mesmo assim")
+                                else:
+                                    container_loc = st.container()
                                 
-                                meds_loc = df_loc.groupby(col_trat)[col_resp].mean()
-                                reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
-                                max_val_loc = meds_loc.max()
+                                with container_loc:
+                                    meds_loc = df_loc.groupby(col_trat)[col_resp].mean()
+                                    reps_loc = df_loc.groupby(col_trat)[col_resp].count().mean()
+                                    max_val_loc = meds_loc.max()
 
-                                df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
-                                df_sk_loc = scott_knott(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
-                                
-                                if 'Letras' in df_tk_loc.columns: df_tk_loc = df_tk_loc.rename(columns={'Letras': 'Grupos'})
-                                if 'Grupo' in df_sk_loc.columns: df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
-                                
-                                df_tk_loc = df_tk_loc[['Media', 'Grupos']]
-                                df_sk_loc = df_sk_loc[['Media', 'Grupos']]
+                                    df_tk_loc = tukey_manual_preciso(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
+                                    df_sk_loc = scott_knott(meds_loc, res_loc['mse'], res_loc['df_resid'], reps_loc, len(meds_loc))
+                                    
+                                    if 'Letras' in df_tk_loc.columns: df_tk_loc = df_tk_loc.rename(columns={'Letras': 'Grupos'})
+                                    if 'Grupo' in df_sk_loc.columns: df_sk_loc = df_sk_loc.rename(columns={'Grupo': 'Grupos'})
+                                    
+                                    df_tk_loc = df_tk_loc[['Media', 'Grupos']]
+                                    df_sk_loc = df_sk_loc[['Media', 'Grupos']]
 
-                                sub_abas_loc = st.tabs(["📊 Tukey", "🎨 Scott-Knott"])
-                                
-                                with sub_abas_loc[0]:
-                                    st.dataframe(df_tk_loc.style.format({"Media": "{:.2f}"}))
-                                    cfg_tk_loc = mostrar_editor_grafico(f"tk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Tukey)", col_trat, col_resp, usar_cor_unica=True)
-                                    f_tk_loc = px.bar(df_tk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
-                                    st.plotly_chart(estilizar_grafico_avancado(f_tk_loc, cfg_tk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_tk_{loc}_{col_resp}_{i}")
-                                
-                                with sub_abas_loc[1]:
-                                    st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
-                                    grps_sk_loc = sorted(df_sk_loc['Grupos'].unique())
-                                    cfg_sk_loc = mostrar_editor_grafico(f"sk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_loc)
-                                    f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
-                                    st.plotly_chart(estilizar_grafico_avancado(f_sk_loc, cfg_sk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_sk_{loc}_{col_resp}_{i}")
+                                    sub_abas_loc = st.tabs(["📊 Tukey", "🎨 Scott-Knott"])
+                                    
+                                    with sub_abas_loc[0]:
+                                        st.dataframe(df_tk_loc.style.format({"Media": "{:.2f}"}))
+                                        cfg_tk_loc = mostrar_editor_grafico(f"tk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Tukey)", col_trat, col_resp, usar_cor_unica=True)
+                                        f_tk_loc = px.bar(df_tk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                        st.plotly_chart(estilizar_grafico_avancado(f_tk_loc, cfg_tk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_tk_{loc}_{col_resp}_{i}")
+                                    
+                                    with sub_abas_loc[1]:
+                                        st.dataframe(df_sk_loc.style.format({"Media": "{:.2f}"}))
+                                        grps_sk_loc = sorted(df_sk_loc['Grupos'].unique())
+                                        cfg_sk_loc = mostrar_editor_grafico(f"sk_loc_{loc}_{col_resp}_{i}", f"Médias {loc} (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk_loc)
+                                        f_sk_loc = px.bar(df_sk_loc.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk_loc['cores_map'])
+                                        st.plotly_chart(estilizar_grafico_avancado(f_sk_loc, cfg_sk_loc, max_val_loc), use_container_width=True, key=f"chart_loc_sk_{loc}_{col_resp}_{i}")
 
                         # --- ABA INTERAÇÃO ---
                         with abas[-1]: 
