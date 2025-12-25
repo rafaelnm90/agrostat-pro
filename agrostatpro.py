@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Visualização Corrigida)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Estilo Realmente Corrigido)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2319,13 +2319,18 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             import plotly.graph_objects as go
                             fig_viz = go.Figure()
                             
-                            # Configurações de Borda (Lógica manual para garantir funcionamento)
+                            # Configurações de Borda e Cor
                             show_line = True
                             mirror_bool = False
                             if cfg['estilo_borda'] == "Caixa (Espelhado)": mirror_bool = True
                             elif cfg['estilo_borda'] == "Sem Bordas": show_line = False
+                            elif cfg['estilo_borda'] == "Apenas L (Eixos)": 
+                                show_line = True
+                                mirror_bool = False
                             
+                            # Cor Principal (Se o usuário não escolheu, usa um cinza padrão)
                             cor_principal = cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E'
+                            cor_texto_eixos = cfg['cor_texto'] # Cor forçada para os textos
 
                             # --- PLOTAGEM ---
                             if "Barras" in tipo_grafico:
@@ -2345,10 +2350,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     y=df_final['Mediana'],
                                     text=df_final['Grupo'],
                                     textposition='outside',
-                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto']), # Cor do texto das letras
+                                    textfont=dict(size=cfg['font_size'], color=cor_texto_eixos), # Usa a cor do texto definida
                                     name='Mediana', 
-                                    marker_color=cor_principal,
-                                    error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cfg['cor_texto'], thickness=1.5, width=5)
+                                    marker_color=cor_principal, # Cor única
+                                    error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cor_texto_eixos, thickness=1.5, width=5)
                                 ))
                                 # Pontos (Dados Reais)
                                 fig_viz.add_trace(go.Box(
@@ -2363,12 +2368,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 fig_viz.add_trace(go.Box(
                                     x=df_proc[col_trat], y=df_proc[col_resp],
                                     name="Dados", 
-                                    marker_color=cor_principal, 
+                                    marker_color=cor_principal, # Cor única para todos
                                     boxpoints='all', jitter=0.3, pointpos=0,
-                                    line=dict(color=cfg['cor_texto'], width=1.5), # Linha do box segue cor do texto/eixo
+                                    line=dict(color=cor_texto_eixos, width=1.5), # Linha do box segue cor do texto/eixo
                                     fillcolor=cor_principal
                                 ))
-                                # Adiciona Letras (Calcula posição Y segura: Max + 5% do range)
+                                # Adiciona Letras (Calcula posição Y segura: Max + 10% do range)
                                 y_max_val = df_proc[col_resp].max()
                                 y_min_val = df_proc[col_resp].min()
                                 margin = (y_max_val - y_min_val) * 0.1
@@ -2386,14 +2391,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     x=ordem_trats, y=y_pos_text,
                                     text=text_vals, mode='text',
                                     textposition='top center', showlegend=False,
-                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto'])
+                                    textfont=dict(size=cfg['font_size'], color=cor_texto_eixos) # Usa a cor do texto definida
                                 ))
 
                             elif "Violin" in tipo_grafico:
                                 fig_viz.add_trace(go.Violin(
                                     x=df_proc[col_trat], y=df_proc[col_resp],
                                     name="Dados",
-                                    line_color=cor_principal, 
+                                    line_color=cor_principal, # Cor única
                                     box_visible=True, points='all',
                                     fillcolor=cor_principal, opacity=0.6
                                 ))
@@ -2413,40 +2418,40 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     x=ordem_trats, y=y_pos_text,
                                     text=text_vals, mode='text',
                                     textposition='top center', showlegend=False,
-                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto'])
+                                    textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
 
                             # --- APLICAÇÃO SEGURA DE ESTILO (LAYOUT COMPLETO) ---
                             fig_viz.update_layout(
-                                title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cfg['cor_texto'])),
+                                title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cor_texto_eixos)),
                                 paper_bgcolor=cfg['cor_fundo'],
                                 plot_bgcolor=cfg['cor_fundo'],
                                 height=cfg['altura'],
-                                font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cfg['cor_texto']),
+                                font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cor_texto_eixos),
                                 showlegend=False,
                                 # EIXO Y
                                 yaxis=dict(
-                                    title=dict(text=cfg['label_y'], font=dict(color=cfg['cor_texto'])),
+                                    title=dict(text=cfg['label_y'], font=dict(color=cor_texto_eixos)),
                                     showgrid=cfg['mostrar_grid'], 
                                     gridcolor=cfg['cor_grade'],
                                     showline=show_line, 
                                     linewidth=1, 
-                                    linecolor=cfg['cor_texto'], # Cor da linha do eixo
+                                    linecolor=cor_texto_eixos, # Borda Y
                                     mirror=mirror_bool,
-                                    tickfont=dict(color=cfg['cor_texto'], size=cfg['font_size']), # Cor dos números
+                                    tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), # Ticks Y
                                     zeroline=False
                                 ),
                                 # EIXO X (COM ORDENAÇÃO FORÇADA)
                                 xaxis=dict(
-                                    title=dict(text=cfg['label_x'], font=dict(color=cfg['cor_texto'])),
+                                    title=dict(text=cfg['label_x'], font=dict(color=cor_texto_eixos)),
                                     showgrid=False,
                                     showline=show_line, 
                                     linewidth=1, 
-                                    linecolor=cfg['cor_texto'], # Cor da linha do eixo
+                                    linecolor=cor_texto_eixos, # Borda X
                                     mirror=mirror_bool,
-                                    tickfont=dict(color=cfg['cor_texto'], size=cfg['font_size']), # Cor dos nomes
+                                    tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), # Ticks X
                                     categoryorder='array', 
-                                    categoryarray=ordem_trats # <--- AQUI A MÁGICA DA ORDEM
+                                    categoryarray=ordem_trats # <--- ORDENAÇÃO DA MEDIANA
                                 )
                             )
                             
@@ -2456,7 +2461,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 estilo_grid = mapa_dash.get(cfg['estilo_subgrade'], 'dot')
                                 fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5, griddash=estilo_grid))
 
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v5_{col_resp}_{i}")
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v6_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
