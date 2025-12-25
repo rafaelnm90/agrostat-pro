@@ -2223,107 +2223,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Gerador de Relatório Executivo (Data Storytelling)
-# ==============================================================================
-
-if analise_valida and modo_app != "🏠 Início":
-    st.markdown("---")
-    st.header("📑 Relatório Executivo (Laudo Automático)")
-    
-    with st.expander("Ver Relatório Completo (Para Entregar ao Chefe)", expanded=False):
-        # --- 1. COLETA DE FATOS (O ROBÔ ANALISA O QUE ACONTECEU) ---
-        fatos = {
-            "var": col_resp,
-            "transf": transf_atual,
-            "n_reps": df_proc.groupby(col_trat)[col_resp].count().min(),
-            "p_shapiro": res['shapiro']['p_val'] if res.get('shapiro') else 0,
-            "p_levene": res['levene']['p_val'] if res.get('levene') else 0,
-            "cv": res['cv'],
-            "tipo_analise": "Não-Paramétrica" if not res['anova_valid'] or (transf_atual != "Nenhuma" and not res['anova_valid']) else "Paramétrica (ANOVA)",
-            "p_anova": res['p_val'] if 'p_val' in res else 0,
-            "significativo": True if res.get('p_val', 1) < 0.05 else False
-        }
-        
-        # --- 2. MOTOR DE REDAÇÃO (O ROBÔ ESCREVE) ---
-        
-        # Parágrafo 1: Introdução e Qualidade dos Dados
-        texto_intro = f"""
-        **1. Qualidade dos Dados e Pressupostos**
-        A análise foi realizada para a variável **'{fatos['var']}'**. Inicialmente, realizou-se o teste de normalidade de Shapiro-Wilk e o teste de homogeneidade de variâncias.
-        """
-        
-        if fatos['p_shapiro'] < 0.05:
-            texto_intro += f" Os dados originais **não apresentaram distribuição normal** (P={fatos['p_shapiro']:.4f}), o que viola o pressuposto básico da ANOVA."
-        else:
-            texto_intro += f" Os dados apresentaram **distribuição normal** (P={fatos['p_shapiro']:.4f}), atendendo ao pressuposto estatístico."
-            
-        # Parágrafo 2: Ações Corretivas (Transformação)
-        texto_acao = ""
-        if fatos['transf'] != "Nenhuma":
-            texto_acao = f"""
-            **2. Tratamento dos Dados**
-            Devido à violação dos pressupostos ou alta dispersão, optou-se pela transformação dos dados utilizando o método **{fatos['transf']}**.
-            Essa técnica tem como objetivo reduzir a variância entre as repetições e tentar aproximar os dados da normalidade para permitir uma análise mais justa.
-            """
-        else:
-            texto_acao = f"""
-            **2. Tratamento dos Dados**
-            Os dados foram mantidos em sua escala original, sem necessidade de transformação matemática, preservando as unidades reais de medida.
-            """
-            
-        # Parágrafo 3: Decisão do Método (O "Porquê" da Análise)
-        if "Não-Paramétrica" in fatos['tipo_analise']:
-            texto_metodo = f"""
-            **3. Metodologia Estatística Escolhida: Análise Não-Paramétrica**
-            **Por que não usamos a ANOVA (Média)?** Mesmo após a verificação (e eventuais tentativas de transformação), os dados não atenderam aos critérios rígidos de normalidade e homogeneidade exigidos pela ANOVA. Utilizar a média aritmética simples neste cenário levaria a conclusões erradas (Falsos Positivos).
-            
-            **O que foi feito?** Optou-se pela estatística robusta baseada em **Medianas e Postos** (Rankings). 
-            - Se o N < 5, priorizou-se a visualização dos dados reais.
-            - O teste de hipótese utilizado considera a posição de cada dado em relação aos outros, eliminando o efeito de valores extremos (outliers).
-            """
-        else:
-            texto_metodo = f"""
-            **3. Metodologia Estatística Escolhida: Análise Paramétrica (ANOVA)**
-            **Por que usamos a ANOVA?** Os dados atenderam satisfatoriamente aos pressupostos de normalidade e homogeneidade. Isso valida o uso da Média e do Desvio Padrão como estimadores confiáveis. O Teste F da ANOVA é a ferramenta mais potente (maior poder estatístico) para este cenário.
-            """
-            
-        # Parágrafo 4: Conclusão Gerencial
-        if fatos['significativo']:
-            texto_conclusao = f"""
-            **4. Conclusão e Recomendação**
-            O teste estatístico detectou **diferença significativa** entre os tratamentos (P < 0.05). Isso significa que a variação observada não é fruto do acaso; os tratamentos realmente causaram efeitos diferentes.
-            Recomenda-se observar a Tabela de Médias/Medianas acima para identificar o grupo superior (Letra 'a'). 
-            O Coeficiente de Variação (CV) foi de **{fatos['cv']:.2f}%**, indicando a precisão experimental.
-            """
-        else:
-            texto_conclusao = f"""
-            **4. Conclusão e Recomendação**
-            Não foi detectada diferença estatística significativa entre os tratamentos (P > 0.05). Estatisticamente, **todos os tratamentos tiveram desempenho igual**.
-            Qualquer diferença visual nos gráficos deve ser atribuída ao erro aleatório ou variação natural do experimento, e não ao efeito dos tratamentos.
-            """
-
-        # --- 3. RENDERIZAÇÃO NA TELA ---
-        st.info("💡 **Dica:** Para salvar este relatório em PDF, pressione **Ctrl + P** no seu navegador e escolha 'Salvar como PDF'. O layout abaixo foi feito para ser impresso.")
-        
-        container_relatorio = st.container()
-        with container_relatorio:
-            st.markdown(f"## 📋 Relatório Técnico: {fatos['var']}")
-            st.markdown(f"**Data:** {pd.Timestamp.now().strftime('%d/%m/%Y')}")
-            st.markdown("---")
-            st.markdown(texto_intro)
-            st.markdown(texto_acao)
-            st.markdown(texto_metodo)
-            st.markdown(texto_conclusao)
-            
-            st.markdown("---")
-            st.caption("Relatório gerado automaticamente pelo AgroStat Pro.")
-# ==============================================================================
-# 🏁 FIM DO BLOCO 20
-# ==============================================================================
-
-                
-# ==============================================================================
-# 📂 BLOCO 21: Lógica de Fallback e Relatório Não-Paramétrico (Ticks Físicos vs Rótulos)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Ticks Físicos vs Rótulos)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2581,6 +2481,107 @@ if analise_valida and modo_app != "🏠 Início":
 
 elif modo_app == "📊 Análise Estatística":
     st.info("👈 Faça upload do arquivo para começar.")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 20
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 21: Gerador de Relatório Executivo (Data Storytelling)
+# ==============================================================================
+# Adicione este bloco LOGO APÓS o Bloco 20 (ou no final do script)
+
+if analise_valida and modo_app != "🏠 Início":
+    st.markdown("---")
+    st.header("📑 Relatório Executivo (Laudo Automático)")
+    
+    with st.expander("Ver Relatório Completo (Para Entregar ao Chefe)", expanded=False):
+        # --- 1. COLETA DE FATOS (O ROBÔ ANALISA O QUE ACONTECEU) ---
+        fatos = {
+            "var": col_resp,
+            "transf": transf_atual,
+            "n_reps": df_proc.groupby(col_trat)[col_resp].count().min(),
+            "p_shapiro": res['shapiro']['p_val'] if res.get('shapiro') else 0,
+            "p_levene": res['levene']['p_val'] if res.get('levene') else 0,
+            "cv": res['cv'],
+            "tipo_analise": "Não-Paramétrica" if not res['anova_valid'] or (transf_atual != "Nenhuma" and not res['anova_valid']) else "Paramétrica (ANOVA)",
+            "p_anova": res['p_val'] if 'p_val' in res else 0,
+            "significativo": True if res.get('p_val', 1) < 0.05 else False
+        }
+        
+        # --- 2. MOTOR DE REDAÇÃO (O ROBÔ ESCREVE) ---
+        
+        # Parágrafo 1: Introdução e Qualidade dos Dados
+        texto_intro = f"""
+        **1. Qualidade dos Dados e Pressupostos**
+        A análise foi realizada para a variável **'{fatos['var']}'**. Inicialmente, realizou-se o teste de normalidade de Shapiro-Wilk e o teste de homogeneidade de variâncias.
+        """
+        
+        if fatos['p_shapiro'] < 0.05:
+            texto_intro += f" Os dados originais **não apresentaram distribuição normal** (P={fatos['p_shapiro']:.4f}), o que viola o pressuposto básico da ANOVA."
+        else:
+            texto_intro += f" Os dados apresentaram **distribuição normal** (P={fatos['p_shapiro']:.4f}), atendendo ao pressuposto estatístico."
+            
+        # Parágrafo 2: Ações Corretivas (Transformação)
+        texto_acao = ""
+        if fatos['transf'] != "Nenhuma":
+            texto_acao = f"""
+            **2. Tratamento dos Dados**
+            Devido à violação dos pressupostos ou alta dispersão, optou-se pela transformação dos dados utilizando o método **{fatos['transf']}**.
+            Essa técnica tem como objetivo reduzir a variância entre as repetições e tentar aproximar os dados da normalidade para permitir uma análise mais justa.
+            """
+        else:
+            texto_acao = f"""
+            **2. Tratamento dos Dados**
+            Os dados foram mantidos em sua escala original, sem necessidade de transformação matemática, preservando as unidades reais de medida.
+            """
+            
+        # Parágrafo 3: Decisão do Método (O "Porquê" da Análise)
+        if "Não-Paramétrica" in fatos['tipo_analise']:
+            texto_metodo = f"""
+            **3. Metodologia Estatística Escolhida: Análise Não-Paramétrica**
+            **Por que não usamos a ANOVA (Média)?** Mesmo após a verificação (e eventuais tentativas de transformação), os dados não atenderam aos critérios rígidos de normalidade e homogeneidade exigidos pela ANOVA. Utilizar a média aritmética simples neste cenário levaria a conclusões erradas (Falsos Positivos).
+            
+            **O que foi feito?** Optou-se pela estatística robusta baseada em **Medianas e Postos** (Rankings). 
+            - Se o N < 5, priorizou-se a visualização dos dados reais.
+            - O teste de hipótese utilizado considera a posição de cada dado em relação aos outros, eliminando o efeito de valores extremos (outliers).
+            """
+        else:
+            texto_metodo = f"""
+            **3. Metodologia Estatística Escolhida: Análise Paramétrica (ANOVA)**
+            **Por que usamos a ANOVA?** Os dados atenderam satisfatoriamente aos pressupostos de normalidade e homogeneidade. Isso valida o uso da Média e do Desvio Padrão como estimadores confiáveis. O Teste F da ANOVA é a ferramenta mais potente (maior poder estatístico) para este cenário.
+            """
+            
+        # Parágrafo 4: Conclusão Gerencial
+        if fatos['significativo']:
+            texto_conclusao = f"""
+            **4. Conclusão e Recomendação**
+            O teste estatístico detectou **diferença significativa** entre os tratamentos (P < 0.05). Isso significa que a variação observada não é fruto do acaso; os tratamentos realmente causaram efeitos diferentes.
+            Recomenda-se observar a Tabela de Médias/Medianas acima para identificar o grupo superior (Letra 'a'). 
+            O Coeficiente de Variação (CV) foi de **{fatos['cv']:.2f}%**, indicando a precisão experimental.
+            """
+        else:
+            texto_conclusao = f"""
+            **4. Conclusão e Recomendação**
+            Não foi detectada diferença estatística significativa entre os tratamentos (P > 0.05). Estatisticamente, **todos os tratamentos tiveram desempenho igual**.
+            Qualquer diferença visual nos gráficos deve ser atribuída ao erro aleatório ou variação natural do experimento, e não ao efeito dos tratamentos.
+            """
+
+        # --- 3. RENDERIZAÇÃO NA TELA ---
+        st.info("💡 **Dica:** Para salvar este relatório em PDF, pressione **Ctrl + P** no seu navegador e escolha 'Salvar como PDF'. O layout abaixo foi feito para ser impresso.")
+        
+        container_relatorio = st.container()
+        with container_relatorio:
+            st.markdown(f"## 📋 Relatório Técnico: {fatos['var']}")
+            st.markdown(f"**Data:** {pd.Timestamp.now().strftime('%d/%m/%Y')}")
+            st.markdown("---")
+            st.markdown(texto_intro)
+            st.markdown(texto_acao)
+            st.markdown(texto_metodo)
+            st.markdown(texto_conclusao)
+            
+            st.markdown("---")
+            st.caption("Relatório gerado automaticamente pelo AgroStat Pro.")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
