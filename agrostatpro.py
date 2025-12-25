@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico Avançado
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico Avançado (Com Seletor Visual)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2336,72 +2336,53 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 """
                                 st.code(texto_exemplo, language="text")
                                 
-                                # --- 6. GRÁFICO HÍBRIDO ATUALIZADO (KEY ALTERADA PARA FORÇAR REDESENHO) ---
-                                st.markdown("##### 📉 Gráfico Híbrido (Atualizado)")
-                                
-                                # Prepara dados para o gráfico
-                                df_meds_plot = df_proc.groupby(col_trat)[col_resp].median().reset_index()
-                                df_min = df_proc.groupby(col_trat)[col_resp].min().reset_index()
-                                df_max = df_proc.groupby(col_trat)[col_resp].max().reset_index()
-                                
-                                # Calcula erro (para a linha preta de amplitude)
-                                df_meds_plot['err_plus'] = df_max[col_resp] - df_meds_plot[col_resp]
-                                df_meds_plot['err_minus'] = df_meds_plot[col_resp] - df_min[col_resp]
+                                # --- 6. SELETOR DE GRÁFICOS (VOCÊ ESCOLHE) ---
+                                st.markdown("##### 📉 Visualização dos Dados")
+                                tipo_grafico = st.selectbox(
+                                    "Escolha o Estilo do Gráfico:",
+                                    ["📦 Boxplot (Tradicional)", "🎻 Violin Plot (Densidade)", "📊 Barras + Erro (Híbrido)"],
+                                    key=f"sel_graf_np_{col_resp_original}"
+                                )
                                 
                                 import plotly.graph_objects as go
                                 
-                                fig_combo = go.Figure()
-                                
-                                # 1. Barra de Medianas (Sólida)
-                                fig_combo.add_trace(go.Bar(
-                                    x=df_meds_plot[col_trat],
-                                    y=df_meds_plot[col_resp],
-                                    name='Mediana',
-                                    marker_color='#5D6D7E', # Cinza profissional
-                                    opacity=0.6,
-                                    error_y=dict(
-                                        type='data',
-                                        symmetric=False,
-                                        array=df_meds_plot['err_plus'],
-                                        arrayminus=df_meds_plot['err_minus'],
-                                        visible=True,
-                                        color='black',
-                                        thickness=1.5,
-                                        width=5
-                                    )
-                                ))
-                                
-                                # 2. Pontos Reais (Espalhados)
-                                fig_combo.add_trace(go.Box(
-                                    x=df_proc[col_trat],
-                                    y=df_proc[col_resp],
-                                    name='Dados',
-                                    boxpoints='all', # Garante que os pontos apareçam
-                                    jitter=0.5,      # Aumentei o espalhamento
-                                    pointpos=0,      # Centraliza na barra
-                                    fillcolor='rgba(0,0,0,0)', # Caixa invisível
-                                    line=dict(color='rgba(0,0,0,0)'), # Linha invisível
-                                    marker=dict(
-                                        color='#2E86C1', 
-                                        size=8,
-                                        opacity=0.9,
-                                        line=dict(width=1, color='white')
-                                    ),
-                                    showlegend=False,
-                                    hoverinfo='y'
-                                ))
-                                
-                                fig_combo.update_layout(
-                                    title=f"Mediana (Barra) + Amplitude (Linha) + Dados: {col_resp}",
-                                    yaxis_title=col_resp,
-                                    xaxis_title=col_trat,
-                                    showlegend=False,
-                                    plot_bgcolor='white',
-                                    yaxis=dict(showgrid=True, gridcolor='#f0f0f0')
-                                )
-                                
-                                # Mudei a KEY para forçar atualização
-                                st.plotly_chart(fig_combo, use_container_width=True, key=f"chart_combo_v2_{col_resp}_{i}")
+                                if "Boxplot" in tipo_grafico:
+                                    # BOXPLOT PURO (COM PONTOS)
+                                    fig_viz = px.box(df_proc, x=col_trat, y=col_resp, points="all", color=col_trat, title=f"Boxplot: {col_resp}")
+                                    fig_viz.update_layout(showlegend=False)
+                                    
+                                elif "Violin" in tipo_grafico:
+                                    # VIOLIN PLOT (SEXY)
+                                    fig_viz = px.violin(df_proc, x=col_trat, y=col_resp, box=True, points="all", color=col_trat, title=f"Violin Plot: {col_resp}")
+                                    fig_viz.update_layout(showlegend=False)
+                                    
+                                else:
+                                    # HÍBRIDO (BARRAS + PONTOS)
+                                    df_meds_plot = df_proc.groupby(col_trat)[col_resp].median().reset_index()
+                                    df_min = df_proc.groupby(col_trat)[col_resp].min().reset_index()
+                                    df_max = df_proc.groupby(col_trat)[col_resp].max().reset_index()
+                                    
+                                    df_meds_plot['err_plus'] = df_max[col_resp] - df_meds_plot[col_resp]
+                                    df_meds_plot['err_minus'] = df_meds_plot[col_resp] - df_min[col_resp]
+                                    
+                                    fig_viz = go.Figure()
+                                    # Barra
+                                    fig_viz.add_trace(go.Bar(
+                                        x=df_meds_plot[col_trat], y=df_meds_plot[col_resp],
+                                        name='Mediana', marker_color='#5D6D7E', opacity=0.6,
+                                        error_y=dict(type='data', symmetric=False, array=df_meds_plot['err_plus'], arrayminus=df_meds_plot['err_minus'], visible=True, color='black', thickness=1.5, width=5)
+                                    ))
+                                    # Pontos
+                                    fig_viz.add_trace(go.Box(
+                                        x=df_proc[col_trat], y=df_proc[col_resp],
+                                        name='Dados', boxpoints='all', jitter=0.5, pointpos=0,
+                                        fillcolor='rgba(0,0,0,0)', line=dict(color='rgba(0,0,0,0)'),
+                                        marker=dict(color='#2E86C1', size=8, opacity=0.9, line=dict(width=1, color='white')),
+                                        showlegend=False, hoverinfo='y'
+                                    ))
+                                    fig_viz.update_layout(title=f"Mediana + Amplitude: {col_resp}", showlegend=False, plot_bgcolor='white', yaxis=dict(showgrid=True, gridcolor='#f0f0f0'))
+
+                                st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_np_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
