@@ -151,9 +151,9 @@ def mostrar_editor_tabela(key_prefix):
 
 def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, show_cv):
     """
-    Retorna DOIS dataframes: 
-    1. Dados Principais (Ordenável)
-    2. Rodapé Estatístico (Fixo)
+    Retorna DOIS dataframes SEPARADOS: 
+    1. Dados Principais (Ordenável pelo usuário)
+    2. Rodapé Estatístico (Fixo, não se mistura com a ordenação)
     """
     # 1. Trabalha com cópia para não afetar o original
     df_final = df_medias.copy()
@@ -162,6 +162,7 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
     if 'Media' in df_final.columns:
         df_final['Media'] = df_final['Media'].apply(lambda x: f"{float(x):.2f}")
     
+    # 2. Cria o DataFrame do Rodapé separadamente
     rows_to_add = []
     
     if show_media:
@@ -184,14 +185,13 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
             'Grupos': ''
         })
         
-    # Prepara o DataFrame do Rodapé (se houver algo selecionado)
     df_footer = None
     if rows_to_add:
         df_footer = pd.DataFrame(rows_to_add)
-        # Ajusta nomes para alinhar visualmente (mesmo que em tabelas separadas)
+        # Define o índice como 'Tratamento' para alinhar visualmente com a tabela principal
         df_footer = df_footer.set_index('Tratamento')
     
-    # Retorna separado: Dados Puros (para ordenar) e Estatísticas (para fixar)
+    # RETORNA DOIS OBJETOS DISTINTOS (IMPORTANTE!)
     return df_final, df_footer
 # ==============================================================================
 # 🏁 FIM DO BLOCO 03
@@ -1906,7 +1906,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 18: Visualização - Análise Individual (Rodapé Fixo + Tabela Pro)
+# 📂 BLOCO 18: Visualização - Análise Individual (Rodapé Realmente Fixo)
 # ==============================================================================
                 if analise_valida:
                     
@@ -2004,12 +2004,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 # RECEBE AS DUAS TABELAS SEPARADAS
                                 df_tk_dados, df_tk_rodape = preparar_tabela_publicacao(df_tukey_ind, media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
                                 
-                                # 1. TABELA PRINCIPAL (ORDENÁVEL)
+                                # 1. TABELA PRINCIPAL (ORDENÁVEL) - Use as colunas para ordenar
                                 st.dataframe(df_tk_dados, use_container_width=True)
                                 
-                                # 2. RODAPÉ FIXO (SE EXISTIR)
+                                # 2. RODAPÉ FIXO (SE EXISTIR) - Não se mistura com a de cima
                                 if df_tk_rodape is not None:
-                                    st.markdown("###### 📊 Estatísticas do Ensaio")
                                     st.dataframe(df_tk_rodape, use_container_width=True)
                                 
                                 st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Tukey a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_tk else ''}")
@@ -2044,7 +2043,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 
                                 # 2. RODAPÉ FIXO (SE EXISTIR)
                                 if df_sk_rodape is not None:
-                                    st.markdown("###### 📊 Estatísticas do Ensaio")
                                     st.dataframe(df_sk_rodape, use_container_width=True)
                                 
                                 st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Scott-Knott a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_sk else ''}")
