@@ -2194,7 +2194,7 @@ if modo_app == "🎲 Sorteio Experimental":
 
     st.markdown("---")
     
-    # --- LÓGICA DE NUMERAÇÃO AVANÇADA ---
+    # --- LÓGICA DE NUMERAÇÃO AVANÇADA (CORRIGIDA) ---
     st.markdown("#### 🏷️ Configuração de Numeração")
     c_num1, c_num2 = st.columns([1, 2])
     
@@ -2203,7 +2203,12 @@ if modo_app == "🎲 Sorteio Experimental":
         
     with c_num2:
         if usar_salto:
-            salto_val = st.number_input("Valor do Salto (Multiplicador)", value=100, step=100, help="Ex: 100 gera 101, 201... | 1000 gera 1001, 2001...")
+            # CORREÇÃO: Permite definir Salto e Início separadamente
+            col_s1, col_s2 = st.columns(2)
+            with col_s1: 
+                salto_val = st.number_input("Salto (Entre Blocos)", value=100, step=100, help="Quanto soma ao passar de um bloco para outro.")
+            with col_s2: 
+                num_inicial = st.number_input("Início (1º Bloco)", value=101, step=1, help="Número da primeira parcela do Bloco 1.")
         else:
             num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
 
@@ -2277,20 +2282,22 @@ if modo_app == "🎲 Sorteio Experimental":
                     info_blocos.extend([f"Bloco {i+1}"] * len(bloco))
                     # info_reps também não será usado na saída do DBC
             
-            # --- GERAÇÃO DE IDs ---
+            # --- GERAÇÃO DE IDs (CORRIGIDO) ---
             total_sorteadas = len(parcelas)
+            ids_personalizados = []
             
             if usar_salto:
-                ids_personalizados = []
                 n_trats_por_bloco = len(lista_trats_final)
                 
                 for i in range(total_sorteadas):
-                    bloco_idx = i // n_trats_por_bloco
-                    item_idx = (i % n_trats_por_bloco) + 1
-                    novo_id = ((bloco_idx + 1) * salto_val) + item_idx
+                    bloco_idx = i // n_trats_por_bloco # 0, 1, 2...
+                    item_idx = (i % n_trats_por_bloco) + 1 # 1, 2, 3...
+                    
+                    # FÓRMULA CORRIGIDA: Início + (Deslocamento do Bloco) + (Item Sequencial)
+                    novo_id = num_inicial + (bloco_idx * salto_val) + (item_idx - 1)
                     ids_personalizados.append(novo_id)
             else:
-                ids_personalizados = range(num_inicial, num_inicial + total_sorteadas)
+                ids_personalizados = list(range(num_inicial, num_inicial + total_sorteadas))
             
             # --- MONTAGEM DINÂMICA DO DATAFRAME ---
             dados_planilha = {"ID_Parcela": ids_personalizados}
