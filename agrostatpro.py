@@ -697,7 +697,7 @@ def analisar_regressao_polinomial(df, col_trat, col_resp):
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn)
+# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn - Correção Native)
 # ==============================================================================
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     """
@@ -732,7 +732,7 @@ def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=Non
         return nome_teste, stat, p_val
 
     except Exception as e:
-        if 'EXIBIR_LOGS' in globals() and EXIBIR_LOGS: print(f"Erro NP: {e}")
+        # if 'EXIBIR_LOGS' in globals() and EXIBIR_LOGS: print(f"Erro NP: {e}")
         return "Erro de Cálculo", 0, 1.0
 
 def calcular_posthoc_dunn(df, col_trat, col_resp, p_adj_method='bonferroni'):
@@ -755,9 +755,6 @@ def calcular_posthoc_dunn(df, col_trat, col_resp, p_adj_method='bonferroni'):
     ns = df_rank.groupby(col_trat)['posto'].count()
     
     N = len(df)
-    
-    # Constante do Erro Padrão (Sem correção de empates para simplificar, mas robusto)
-    # Fórmula: sqrt( (N(N+1)/12) * (1/ni + 1/nj) )
     
     resultados = []
     
@@ -791,73 +788,81 @@ def calcular_posthoc_dunn(df, col_trat, col_resp, p_adj_method='bonferroni'):
 
 def gerar_letras_dunn(trats, df_comparacoes):
     """
-    Algoritmo de Atribuição de Letras (Clique Cover Simplificado) para P-valores.
+    Algoritmo de Atribuição de Letras (Nativo - Sem Dependências Externas).
+    Substitui a necessidade do NetworkX.
     """
-    # 1. Inicializa todos com 'a'
-    letras = {t: "" for t in trats}
+    # 1. Mapear quem é igual a quem (Adjacência)
+    iguais = {t: {t} for t in trats} # Todo mundo é igual a si mesmo
     
-    # Ordena tratamentos pela Mediana real (para a letra 'a' ser o maior)
-    # (Essa ordenação vem de fora, aqui assumimos que 'trats' já pode vir ordenado ou não,
-    # mas a lógica de letras agrupa quem é igual)
-    
-    # Matriz de Igualdade (True se p > 0.05, ou seja, são IGUAIS)
-    adj_matrix = {t: set([t]) for t in trats}
     for _, row in df_comparacoes.iterrows():
-        if row['p_adj'] > 0.05: # Não difere
-            adj_matrix[row['A']].add(row['B'])
-            adj_matrix[row['B']].add(row['A'])
+        if row['p_adj'] > 0.05: # Não difere estatisticamente
+            iguais[row['A']].add(row['B'])
+            iguais[row['B']].add(row['A'])
             
-    # Algoritmo Guloso para Letras
-    # Vamos varrer e atribuir letras.
-    # Esta é uma implementação simplificada para evitar dependência de grafos complexos
+    # 2. Algoritmo de Varredura para Cliques Maximais (Simplificado)
+    # A lógica é: Criar grupos onde todos os membros são iguais entre si.
     
-    # Lista de tratamentos ordenada (vamos assumir alfabética ou média, tanto faz para a lógica de igualdade)
-    trats_list = sorted(list(trats))
+    cliques = []
+    # Ordena tratamentos por número de conexões (heurística para cobrir maiores grupos primeiro)
+    trats_ordenados = sorted(trats, key=lambda x: len(iguais[x]), reverse=True)
     
-    # Reset
-    current_char_idx = 0
-    assigned_groups = []
+    restantes = set(trats)
     
-    # Tentativa de agrupar cliques (grupos onde todos são iguais a todos)
-    # Abordagem visual simples:
-    # Se A=B e B=C, mas A!=C, isso é complexo. 
-    # Vamos usar uma lógica de varredura robusta.
+    # Tentativa de cobrir todas as conexões
+    # Nota: Este é um problema NP-Hard, estamos usando uma aproximação gulosa suficiente para agronomia
     
-    import networkx as nx # Streamlit tem networkx instalado por padrão geralmente. 
-    # Se não tiver, faremos fallback.
-    try:
-        G = nx.Graph()
-        G.add_nodes_from(trats)
-        # Adiciona arestas onde NÃO há diferença (são iguais)
-        for _, row in df_comparacoes.iterrows():
-            if row['p_adj'] > 0.05:
-                G.add_edge(row['A'], row['B'])
+    # Vamos gerar grupos válidos baseados nas conexões
+    # Um "clique" é um conjunto onde todo mundo é igual a todo mundo dentro dele
+    
+    # Gera candidatos a grupos
+    candidatos = []
+    for t in trats:
+        # O conjunto de iguais a 't' é um candidato inicial
+        grupo_base = iguais[t]
+        # Mas dentro desse grupo, todos devem ser iguais entre si.
+        # Vamos podar o grupo_base para garantir consistência
+        clique_valido = {t}
+        for candidato in grupo_base:
+            if candidato == t: continue
+            # Para entrar no clique, tem que ser igual a todos que JÁ estão lá
+            if all(candidato in iguais[membro] for membro in clique_valido):
+                clique_valido.add(candidato)
         
-        # Achar cliques maximais (grupos onde todos são iguais entre si)
-        cliques = list(nx.find_cliques(G))
-        
-        # Ordena cliques pelos tratamentos contidos (para 'a' ficar nos maiores se possível)
-        # (Omitido ordenação complexa para manter simples)
-        
-        # Mapeia letras
-        mapa_letras = "abcdefghijklmnopqrstuvwxyz"
-        res_letras = {t: "" for t in trats}
-        
-        # Se um tratamento está num clique, ele ganha a letra daquele clique
-        for i, clique in enumerate(cliques):
-            char = get_letra_segura(i) 
-            for t in clique:
-                res_letras[t] += char
-                
-        # Ordena as letras dentro da string (ex: "ba" -> "ab")
-        for t in res_letras:
-            res_letras[t] = "".join(sorted(res_letras[t]))
+        # Adiciona se não for subconjunto de um já existente
+        if clique_valido not in candidatos:
+            candidatos.append(clique_valido)
+
+    # Filtra apenas os cliques maximais (remove subconjuntos)
+    cliques_finais = []
+    candidatos.sort(key=len, reverse=True)
+    
+    for c in candidatos:
+        eh_subconjunto = False
+        for aceito in cliques_finais:
+            if c.issubset(aceito):
+                eh_subconjunto = True
+                break
+        if not eh_subconjunto:
+            cliques_finais.append(c)
+
+    # 3. Atribui letras aos cliques
+    letras_map = {t: "" for t in trats}
+    chars = "abcdefghijklmnopqrstuvwxyz"
+    
+    # Ordena os cliques para que a letra 'a' fique (tentativamente) nas maiores médias
+    # (A ordenação final visual será feita na tabela, aqui garantimos a letra)
+    # Como não temos as médias aqui dentro, usamos a ordem de entrada 'trats' como proxy se ela vier ordenada
+    
+    for i, clique in enumerate(cliques_finais):
+        letra_atual = get_letra_segura(i)
+        for t in clique:
+            letras_map[t] += letra_atual
             
-        return res_letras
+    # Ordena as letras de cada tratamento (ex: "ba" vira "ab")
+    for t in letras_map:
+        letras_map[t] = "".join(sorted(letras_map[t]))
         
-    except:
-        # Fallback se não tiver networkx (todos diferentes ou todos iguais)
-        return {t: " " for t in trats} # Retorna vazio em caso de erro técnico
+    return letras_map
 # ==============================================================================
 # 🏁 FIM DO BLOCO 09
 # ==============================================================================
