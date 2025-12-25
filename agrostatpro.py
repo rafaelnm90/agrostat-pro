@@ -152,8 +152,8 @@ def mostrar_editor_tabela(key_prefix):
 def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, show_cv):
     """
     Retorna DOIS dataframes: 
-    1. Dados Principais (Ordenável, com Grupos)
-    2. Rodapé Estatístico (Fixo, SEM Grupos)
+    1. Dados Principais (Ordenável)
+    2. Rodapé Estatístico (Fixo, preparado para HTML)
     """
     df_final = df_medias.copy()
     if 'Media' in df_final.columns:
@@ -164,8 +164,8 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
     if show_media:
         rows_to_add.append({
             'Tratamento': 'Média Geral', 
-            'Media': f"{media_geral:.2f}"
-            # Nota: Não adicionamos 'Grupos' aqui
+            'Media': f"{media_geral:.2f}",
+            'Grupos': '' # Mantém a coluna vazia para alinhar largura
         })
         
     if show_cv:
@@ -177,7 +177,8 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
             
         rows_to_add.append({
             'Tratamento': 'CV (%)', 
-            'Media': txt_cv
+            'Media': txt_cv,
+            'Grupos': '' # Mantém a coluna vazia para alinhar largura
         })
         
     df_footer = None
@@ -188,35 +189,41 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
     return df_final, df_footer
 
 def gerar_html_rodape(df_footer):
-    """Gera HTML limpo para o rodapé parecer grudado na tabela principal."""
+    """Gera HTML sem cabeçalho e com 3 colunas para alinhar visualmente."""
     if df_footer is None or df_footer.empty: return ""
     
-    # CSS Inline para garantir estilo nativo (Dark/Light mode compatível)
+    # CSS para imitar a tabela do Streamlit (bordas sutis, fonte padrão)
     html = """
     <style>
         .rodape-table {
             width: 100%;
             border-collapse: collapse;
-            font-family: "Source Sans Pro", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             font-size: 14px;
             color: var(--text-color);
-            margin-top: -1rem; /* Puxa para cima para grudar */
+            margin-top: -16px; /* Puxa para cima para grudar */
+            position: relative;
+            z-index: 1;
         }
         .rodape-table td {
-            padding: 8px;
-            border-bottom: 1px solid var(--faded-text-10);
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(49, 51, 63, 0.2); /* Borda sutil */
             background-color: var(--background-color);
         }
         .rodape-table tr:first-child td {
-            border-top: 1px solid var(--faded-text-10); /* Linha separadora sutil */
+            border-top: 1px solid rgba(49, 51, 63, 0.2);
         }
-        .col-nome { width: 200px; font-weight: 600; } /* Largura fixa estimada */
+        /* Tentativa de alinhamento visual com st.dataframe */
+        .col-nome { width: 33%; font-weight: 600; } 
+        .col-valor { width: 33%; }
+        .col-vazia { width: 33%; }
     </style>
     <table class="rodape-table">
     """
     
     for index, row in df_footer.iterrows():
-        html += f"<tr><td class='col-nome'>{index}</td><td>{row['Media']}</td></tr>"
+        # Renderiza 3 células para tentar manter o alinhamento com a tabela de cima
+        html += f"<tr><td class='col-nome'>{index}</td><td class='col-valor'>{row['Media']}</td><td class='col-vazia'></td></tr>"
     
     html += "</table>"
     return html
