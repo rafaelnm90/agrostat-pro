@@ -2223,7 +2223,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Regra N < 5)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Escolha Inteligente)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2300,19 +2300,34 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             st.markdown("---")
 
-                            # 3. VISUALIZAÇÃO INTELIGENTE (Regra N < 5)
+                            # 3. VISUALIZAÇÃO INTELIGENTE (AUTOMÁTICA)
                             st.markdown("#### 📉 Visualização dos Dados")
                             
-                            # Verifica o N (número de repetições)
+                            # --- ALGORITMO DE ESCOLHA DO GRÁFICO ---
                             min_reps = df_proc.groupby(col_trat)[col_resp].count().min()
+                            # Checa se há variação zero (muitos empates)
+                            tem_empates_rigidos = False
+                            amplitudes = df_proc.groupby(col_trat)[col_resp].apply(lambda x: x.max() - x.min())
+                            if (amplitudes == 0).any(): tem_empates_rigidos = True
+
+                            # Lista de Opções
+                            opcoes_grafico = ["📦 Boxplot (Tradicional)", "📍 Strip Plot (Pontos)", "🎯 Dot Plot (Mediana Única)", "📊 Barras + Erro (Híbrido)", "🎻 Violin Plot (Densidade)"]
                             
-                            # Define o padrão com base no N
-                            opcoes_grafico = ["📦 Boxplot (Tradicional)", "📍 Strip Plot (Pontos)", "📊 Barras + Erro (Híbrido)", "🎻 Violin Plot (Densidade)"]
+                            # Lógica de Decisão
                             idx_padrao = 0 # Default Boxplot
+                            msg_auto = ""
                             
-                            if min_reps < 5:
-                                idx_padrao = 1 # Strip Plot
-                                st.info(f"💡 **Dica:** Como você tem poucas repetições (N={min_reps}), selecionamos automaticamente o **Strip Plot**. Boxplots não são confiáveis com menos de 5 dados.")
+                            if min_reps >= 5:
+                                idx_padrao = 0 # Boxplot (Cenário 1)
+                            else:
+                                if tem_empates_rigidos:
+                                    idx_padrao = 2 # Dot Plot (Cenário 3 - Limpeza visual para empates)
+                                    msg_auto = f"💡 **Sugestão Automática:** Como você tem poucos dados (N={min_reps}) e valores repetidos, ativamos o **Dot Plot** para evitar poluição visual."
+                                else:
+                                    idx_padrao = 1 # Strip Plot (Cenário 2 - Honestidade na dispersão)
+                                    msg_auto = f"💡 **Sugestão Automática:** Para N={min_reps}, o **Strip Plot** é o mais indicado para mostrar a distribuição real."
+
+                            if msg_auto: st.info(msg_auto)
                             
                             tipo_grafico = st.selectbox("Estilo do Gráfico:", opcoes_grafico, index=idx_padrao, key=f"sel_graf_np_{col_resp_original}")
                             
@@ -2324,15 +2339,28 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             cor_principal = cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E'
                             cor_texto_eixos = cfg['cor_texto']
 
-                            if "Barras" in tipo_grafico:
+                            # --- RENDERIZAÇÃO DOS ESTILOS ---
+                            
+                            if "Dot Plot" in tipo_grafico:
+                                # ESTILO NOVO: Apenas o ponto da Mediana (Limpo e Elegante)
+                                fig_viz.add_trace(go.Scatter(
+                                    x=df_final[col_trat], y=df_final['Mediana'],
+                                    mode='markers+text',
+                                    marker=dict(size=18, color=cor_principal, symbol='circle', line=dict(width=2, color='white')),
+                                    text=df_final['Grupo'], textposition='top center',
+                                    textfont=dict(size=cfg['font_size']+2, color=cor_texto_eixos),
+                                    name='Mediana'
+                                ))
+                                # Adiciona linha horizontal sutil para guiar o olho (opcional, estilo lollipop)
+                                fig_viz.update_traces(showlegend=False)
+
+                            elif "Barras" in tipo_grafico:
                                 df_min = df_proc.groupby(col_trat)[col_resp].min()
                                 df_max = df_proc.groupby(col_trat)[col_resp].max()
-                                erros_sup = []
-                                erros_inf = []
+                                erros_sup = []; erros_inf = []
                                 for t in ordem_trats:
                                     m = df_final[df_final[col_trat]==t]['Mediana'].values[0]
-                                    erros_sup.append(df_max[t] - m)
-                                    erros_inf.append(m - df_min[t])
+                                    erros_sup.append(df_max[t] - m); erros_inf.append(m - df_min[t])
 
                                 fig_viz.add_trace(go.Bar(
                                     x=df_final[col_trat], y=df_final['Mediana'],
@@ -2355,7 +2383,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     boxpoints='all', jitter=0.3, pointpos=0,
                                     line=dict(color=cor_texto_eixos, width=1.5), fillcolor=cor_principal
                                 ))
-                                # Letras
                                 y_max_val = df_proc[col_resp].max()
                                 margin = (y_max_val - df_proc[col_resp].min()) * 0.1
                                 y_pos = []; txts = []
@@ -2369,22 +2396,19 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 ))
                                 
                             elif "Strip Plot" in tipo_grafico:
-                                # Strip Plot "Honesto" (Apenas Pontos + Mediana sutil)
                                 fig_viz.add_trace(go.Box(
                                     x=df_proc[col_trat], y=df_proc[col_resp],
                                     name="Dados", 
                                     boxpoints='all', jitter=0.3, pointpos=0,
-                                    fillcolor='rgba(0,0,0,0)', line=dict(width=0), # Remove caixa e linhas
+                                    fillcolor='rgba(0,0,0,0)', line=dict(width=0),
                                     marker=dict(color=cor_principal, size=10, opacity=0.8, line=dict(width=1, color=cor_texto_eixos)),
                                     showlegend=False
                                 ))
-                                # Adiciona traço da Mediana para referência
                                 fig_viz.add_trace(go.Scatter(
                                     x=df_final[col_trat], y=df_final['Mediana'],
                                     mode='markers', marker=dict(symbol='line-ew', size=40, color=cor_texto_eixos, line=dict(width=3)),
                                     name='Mediana', hoverinfo='y'
                                 ))
-                                # Letras
                                 y_max_val = df_proc[col_resp].max()
                                 margin = (y_max_val - df_proc[col_resp].min()) * 0.1
                                 y_pos = []; txts = []
@@ -2429,7 +2453,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if cfg['mostrar_subgrade']:
                                 fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5))
 
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v8_{col_resp}_{i}")
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v9_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
