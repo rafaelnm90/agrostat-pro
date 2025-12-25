@@ -139,94 +139,34 @@ def classificar_cv(cv):
     elif cv < 30: return "🟠 Alto (Baixa Precisão)"
     else: return "🔴 Muito Alto (Inadequado)"
 
-# --- NOVAS FUNÇÕES PARA TABELA CIENTÍFICA (COM RODAPÉ HTML) ---
+# --- NOVAS FUNÇÕES SIMPLIFICADAS (MENU + DADOS DE TEXTO) ---
 
 def mostrar_editor_tabela(key_prefix):
-    """Menu para personalizar a tabela de médias."""
+    """Menu para incluir CV e Média no rodapé."""
     with st.expander("✏️ Personalizar Tabela (Rodapé e Dados)"):
         c1, c2 = st.columns(2)
-        show_media = c1.checkbox("Exibir Média Geral", value=True, key=f"show_mean_{key_prefix}")
-        show_cv = c2.checkbox("Exibir CV (%)", value=True, key=f"show_cv_{key_prefix}")
+        show_media = c1.checkbox("Incluir Média Geral no Rodapé", value=True, key=f"show_mean_{key_prefix}")
+        show_cv = c2.checkbox("Incluir CV (%) no Rodapé", value=True, key=f"show_cv_{key_prefix}")
         return show_media, show_cv
 
-def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, show_cv):
+def calcular_texto_rodape(media_geral, mse_resid, show_media, show_cv):
     """
-    Retorna DOIS dataframes: 
-    1. Dados Principais (Ordenável)
-    2. Rodapé Estatístico (Fixo, preparado para HTML)
+    Retorna apenas os textos formatados para serem inseridos na nota.
     """
-    df_final = df_medias.copy()
-    if 'Media' in df_final.columns:
-        df_final['Media'] = df_final['Media'].apply(lambda x: f"{float(x):.2f}")
-    
-    rows_to_add = []
+    txt_media = ""
+    txt_cv = ""
     
     if show_media:
-        rows_to_add.append({
-            'Tratamento': 'Média Geral', 
-            'Media': f"{media_geral:.2f}",
-            'Grupos': '' # Mantém a coluna vazia para alinhar largura
-        })
+        txt_media = f"Média Geral: {media_geral:.2f}"
         
     if show_cv:
         if mse_resid > 0:
             cv_val = (np.sqrt(mse_resid) / media_geral) * 100
-            txt_cv = f"{cv_val:.2f}"
+            txt_cv = f"CV (%): {cv_val:.2f}"
         else:
-            txt_cv = "-"
+            txt_cv = "CV (%): -"
             
-        rows_to_add.append({
-            'Tratamento': 'CV (%)', 
-            'Media': txt_cv,
-            'Grupos': '' # Mantém a coluna vazia para alinhar largura
-        })
-        
-    df_footer = None
-    if rows_to_add:
-        df_footer = pd.DataFrame(rows_to_add)
-        df_footer = df_footer.set_index('Tratamento')
-    
-    return df_final, df_footer
-
-def gerar_html_rodape(df_footer):
-    """Gera HTML sem cabeçalho e com 3 colunas para alinhar visualmente."""
-    if df_footer is None or df_footer.empty: return ""
-    
-    # CSS para imitar a tabela do Streamlit (bordas sutis, fonte padrão)
-    html = """
-    <style>
-        .rodape-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            font-size: 14px;
-            color: var(--text-color);
-            margin-top: -16px; /* Puxa para cima para grudar */
-            position: relative;
-            z-index: 1;
-        }
-        .rodape-table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid rgba(49, 51, 63, 0.2); /* Borda sutil */
-            background-color: var(--background-color);
-        }
-        .rodape-table tr:first-child td {
-            border-top: 1px solid rgba(49, 51, 63, 0.2);
-        }
-        /* Tentativa de alinhamento visual com st.dataframe */
-        .col-nome { width: 33%; font-weight: 600; } 
-        .col-valor { width: 33%; }
-        .col-vazia { width: 33%; }
-    </style>
-    <table class="rodape-table">
-    """
-    
-    for index, row in df_footer.iterrows():
-        # Renderiza 3 células para tentar manter o alinhamento com a tabela de cima
-        html += f"<tr><td class='col-nome'>{index}</td><td class='col-valor'>{row['Media']}</td><td class='col-vazia'></td></tr>"
-    
-    html += "</table>"
-    return html
+    return txt_media, txt_cv
 # ==============================================================================
 # 🏁 FIM DO BLOCO 03
 # ==============================================================================
@@ -1940,7 +1880,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 18: Visualização - Análise Individual (Tabela Híbrida DF+HTML)
+# 📂 BLOCO 18: Visualização - Análise Individual (Rodapé Dinâmico)
 # ==============================================================================
                 if analise_valida:
                     
@@ -2033,19 +1973,21 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.error("🚨 **Interação Significativa.** Use a Matriz de Desdobramento abaixo.")
                                 
                                 st.markdown("#### Ranking Geral (Tukey)")
+                                
+                                # MENU DE PERSONALIZAÇÃO
                                 show_m_tk, show_cv_tk = mostrar_editor_tabela(f"tk_ind_{col_resp}_{i}")
+                                txt_m_tk, txt_cv_tk = calcular_texto_rodape(media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
                                 
-                                # PREPARA OS DADOS SEPARADOS
-                                df_tk_dados, df_tk_rodape = preparar_tabela_publicacao(df_tukey_ind, media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
+                                # TABELA LIMPA
+                                st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}), use_container_width=True)
                                 
-                                # 1. TABELA PRINCIPAL (Ordenável)
-                                st.dataframe(df_tk_dados, use_container_width=True)
+                                # RODAPÉ DINÂMICO
+                                infos_extras = []
+                                if txt_cv_tk: infos_extras.append(txt_cv_tk)
+                                if txt_m_tk: infos_extras.append(txt_m_tk)
+                                texto_final_extras = f". {'. '.join(infos_extras)}." if infos_extras else "."
                                 
-                                # 2. RODAPÉ FIXO (HTML "Grudado" e sem Grupos)
-                                html_rodape_tk = gerar_html_rodape(df_tk_rodape)
-                                st.markdown(html_rodape_tk, unsafe_allow_html=True)
-                                
-                                st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Tukey a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_tk else ''}")
+                                st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Tukey a 5% de probabilidade{texto_final_extras}")
                                 
                                 if interacao_sig:
                                     st.markdown("---")
@@ -2067,19 +2009,21 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.error("🚨 **Interação Significativa.** Use a Matriz de Desdobramento abaixo.")
 
                                 st.markdown("#### Ranking Geral (Scott-Knott)")
+                                
+                                # MENU DE PERSONALIZAÇÃO
                                 show_m_sk, show_cv_sk = mostrar_editor_tabela(f"sk_ind_{col_resp}_{i}")
+                                txt_m_sk, txt_cv_sk = calcular_texto_rodape(media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
                                 
-                                # PREPARA OS DADOS SEPARADOS
-                                df_sk_dados, df_sk_rodape = preparar_tabela_publicacao(df_sk_ind, media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
+                                # TABELA LIMPA
+                                st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}), use_container_width=True)
                                 
-                                # 1. TABELA PRINCIPAL (Ordenável)
-                                st.dataframe(df_sk_dados, use_container_width=True)
+                                # RODAPÉ DINÂMICO
+                                infos_extras_sk = []
+                                if txt_cv_sk: infos_extras_sk.append(txt_cv_sk)
+                                if txt_m_sk: infos_extras_sk.append(txt_m_sk)
+                                texto_final_extras_sk = f". {'. '.join(infos_extras_sk)}." if infos_extras_sk else "."
                                 
-                                # 2. RODAPÉ FIXO (HTML "Grudado" e sem Grupos)
-                                html_rodape_sk = gerar_html_rodape(df_sk_rodape)
-                                st.markdown(html_rodape_sk, unsafe_allow_html=True)
-                                
-                                st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Scott-Knott a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_sk else ''}")
+                                st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Scott-Knott a 5% de probabilidade{texto_final_extras_sk}")
                                 
                                 if interacao_sig:
                                     st.markdown("---")
