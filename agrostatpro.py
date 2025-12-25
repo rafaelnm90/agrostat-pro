@@ -2336,10 +2336,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 """
                                 st.code(texto_exemplo, language="text")
                                 
-                                # Gráfico Boxplot para finalizar
-                                st.markdown("##### 📉 Visualização (Boxplot)")
-                                fig_box = px.box(df_proc, x=col_trat, y=col_resp, points="all", color=col_trat, title=f"Distribuição: {col_resp}")
-                                st.plotly_chart(fig_box, use_container_width=True)
+                                # CORREÇÃO GRÁFICA: Strip Plot em vez de Boxplot
+                                st.markdown("##### 📉 Visualização (Pontos)")
+                                # Usamos Strip Plot que é mais honesto para poucos dados
+                                fig_dist = px.strip(df_proc, x=col_trat, y=col_resp, color=col_trat, title=f"Distribuição Real: {col_resp}")
+                                fig_dist.update_traces(marker=dict(size=12, opacity=0.8, line=dict(width=1, color='DarkSlateGrey')))
+                                fig_dist.update_layout(showlegend=False)
+                                st.plotly_chart(fig_dist, use_container_width=True)
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
