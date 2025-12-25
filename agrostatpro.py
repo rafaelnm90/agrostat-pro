@@ -2336,8 +2336,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 """
                                 st.code(texto_exemplo, language="text")
                                 
-                                # --- 6. GRÁFICO HÍBRIDO (BARRAS + PONTOS) ---
-                                st.markdown("##### 📉 Visualização (Mediana + Amplitude)")
+                                # --- 6. GRÁFICO HÍBRIDO ATUALIZADO (KEY ALTERADA PARA FORÇAR REDESENHO) ---
+                                st.markdown("##### 📉 Gráfico Híbrido (Atualizado)")
                                 
                                 # Prepara dados para o gráfico
                                 df_meds_plot = df_proc.groupby(col_trat)[col_resp].median().reset_index()
@@ -2371,20 +2371,19 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     )
                                 ))
                                 
-                                # 2. Pontos Reais (Jitter/Espalhados)
-                                # Usamos go.Box invisível para ganhar o recurso de 'jitter' (espalhamento) automático
+                                # 2. Pontos Reais (Espalhados)
                                 fig_combo.add_trace(go.Box(
                                     x=df_proc[col_trat],
                                     y=df_proc[col_resp],
                                     name='Dados',
-                                    boxpoints='all', # Mostra os pontos
-                                    jitter=0.3,      # Espalha lateralmente para não encavalar
+                                    boxpoints='all', # Garante que os pontos apareçam
+                                    jitter=0.5,      # Aumentei o espalhamento
                                     pointpos=0,      # Centraliza na barra
                                     fillcolor='rgba(0,0,0,0)', # Caixa invisível
                                     line=dict(color='rgba(0,0,0,0)'), # Linha invisível
                                     marker=dict(
                                         color='#2E86C1', 
-                                        size=7,
+                                        size=8,
                                         opacity=0.9,
                                         line=dict(width=1, color='white')
                                     ),
@@ -2393,7 +2392,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 ))
                                 
                                 fig_combo.update_layout(
-                                    title=f"Mediana (Barra) com Amplitude e Dados Originais: {col_resp}",
+                                    title=f"Mediana (Barra) + Amplitude (Linha) + Dados: {col_resp}",
                                     yaxis_title=col_resp,
                                     xaxis_title=col_trat,
                                     showlegend=False,
@@ -2401,7 +2400,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     yaxis=dict(showgrid=True, gridcolor='#f0f0f0')
                                 )
                                 
-                                st.plotly_chart(fig_combo, use_container_width=True)
+                                # Mudei a KEY para forçar atualização
+                                st.plotly_chart(fig_combo, use_container_width=True, key=f"chart_combo_v2_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
