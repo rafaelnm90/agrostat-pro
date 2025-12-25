@@ -2336,13 +2336,72 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 """
                                 st.code(texto_exemplo, language="text")
                                 
-                                # CORREÇÃO GRÁFICA: Strip Plot em vez de Boxplot
-                                st.markdown("##### 📉 Visualização (Pontos)")
-                                # Usamos Strip Plot que é mais honesto para poucos dados
-                                fig_dist = px.strip(df_proc, x=col_trat, y=col_resp, color=col_trat, title=f"Distribuição Real: {col_resp}")
-                                fig_dist.update_traces(marker=dict(size=12, opacity=0.8, line=dict(width=1, color='DarkSlateGrey')))
-                                fig_dist.update_layout(showlegend=False)
-                                st.plotly_chart(fig_dist, use_container_width=True)
+                                # --- 6. GRÁFICO HÍBRIDO (BARRAS + PONTOS) ---
+                                st.markdown("##### 📉 Visualização (Mediana + Amplitude)")
+                                
+                                # Prepara dados para o gráfico
+                                df_meds_plot = df_proc.groupby(col_trat)[col_resp].median().reset_index()
+                                df_min = df_proc.groupby(col_trat)[col_resp].min().reset_index()
+                                df_max = df_proc.groupby(col_trat)[col_resp].max().reset_index()
+                                
+                                # Calcula erro (para a linha preta de amplitude)
+                                df_meds_plot['err_plus'] = df_max[col_resp] - df_meds_plot[col_resp]
+                                df_meds_plot['err_minus'] = df_meds_plot[col_resp] - df_min[col_resp]
+                                
+                                import plotly.graph_objects as go
+                                
+                                fig_combo = go.Figure()
+                                
+                                # 1. Barra de Medianas (Sólida)
+                                fig_combo.add_trace(go.Bar(
+                                    x=df_meds_plot[col_trat],
+                                    y=df_meds_plot[col_resp],
+                                    name='Mediana',
+                                    marker_color='#5D6D7E', # Cinza profissional
+                                    opacity=0.6,
+                                    error_y=dict(
+                                        type='data',
+                                        symmetric=False,
+                                        array=df_meds_plot['err_plus'],
+                                        arrayminus=df_meds_plot['err_minus'],
+                                        visible=True,
+                                        color='black',
+                                        thickness=1.5,
+                                        width=5
+                                    )
+                                ))
+                                
+                                # 2. Pontos Reais (Jitter/Espalhados)
+                                # Usamos go.Box invisível para ganhar o recurso de 'jitter' (espalhamento) automático
+                                fig_combo.add_trace(go.Box(
+                                    x=df_proc[col_trat],
+                                    y=df_proc[col_resp],
+                                    name='Dados',
+                                    boxpoints='all', # Mostra os pontos
+                                    jitter=0.3,      # Espalha lateralmente para não encavalar
+                                    pointpos=0,      # Centraliza na barra
+                                    fillcolor='rgba(0,0,0,0)', # Caixa invisível
+                                    line=dict(color='rgba(0,0,0,0)'), # Linha invisível
+                                    marker=dict(
+                                        color='#2E86C1', 
+                                        size=7,
+                                        opacity=0.9,
+                                        line=dict(width=1, color='white')
+                                    ),
+                                    showlegend=False,
+                                    hoverinfo='y'
+                                ))
+                                
+                                fig_combo.update_layout(
+                                    title=f"Mediana (Barra) com Amplitude e Dados Originais: {col_resp}",
+                                    yaxis_title=col_resp,
+                                    xaxis_title=col_trat,
+                                    showlegend=False,
+                                    plot_bgcolor='white',
+                                    yaxis=dict(showgrid=True, gridcolor='#f0f0f0')
+                                )
+                                
+                                st.plotly_chart(fig_combo, use_container_width=True)
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
