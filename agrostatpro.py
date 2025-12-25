@@ -2227,8 +2227,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Ticks Físicos vs Rótulos)
+# 📂 BLOCO 20 + 21 + 22 (UNIFICADOS): Lógica Final, Captura e Relatório
 # ==============================================================================
+                # --- INICIO DA LÓGICA DO BLOCO 20 ---
                 if analise_valida:
                     if transf_atual != "Nenhuma":
                         st.markdown("---"); st.markdown("### 🛡️ Solução Final: Análise Paramétrica (ANOVA)")
@@ -2253,7 +2254,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         st.warning(f"Log10 não resolveu.")
                         c1, c2 = st.columns([1, 4])
                         with c1:
-                            if st.button("🌱 Tentar Raiz Quadrada", key=f"btn_sqrt_{col_resp_original}"):
+                            if st.button("🌱 Tentar SQRT", key=f"btn_sqrt_{col_resp_original}"):
                                 set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)"); st.rerun()
                         if st.button("Voltar ao Original", key=f"reset_log_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
@@ -2313,10 +2314,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             amplitudes = df_proc.groupby(col_trat)[col_resp].apply(lambda x: x.max() - x.min())
                             if (amplitudes == 0).any(): tem_empates_rigidos = True
 
-                            # Lista de Opções
                             opcoes_grafico = ["📦 Boxplot (Tradicional)", "📍 Strip Plot (Pontos)", "🎯 Dot Plot (Mediana Única)", "📊 Barras + Erro (Híbrido)", "🎻 Violin Plot (Densidade)"]
                             
-                            # Lógica de Decisão
                             idx_padrao = 0 
                             msg_auto = ""
                             
@@ -2344,7 +2343,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             cor_borda_eixos = 'black'
 
                             # --- RENDERIZAÇÃO DOS ESTILOS ---
-                            
                             if "Dot Plot" in tipo_grafico:
                                 fig_viz.add_trace(go.Scatter(
                                     x=df_final[col_trat], y=df_final['Mediana'],
@@ -2441,7 +2439,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
 
-                            # ESTILO (CORRIGIDO: showticklabels=True sempre)
+                            # ESTILO
                             show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
                             mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                             mostrar_ticks_fisicos = cfg.get('mostrar_ticks', True)
@@ -2457,8 +2455,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     linecolor=cor_borda_eixos,
                                     mirror=mirror_bool, 
                                     tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']),
-                                    showticklabels=True, # <--- NÚMEROS SEMPRE VISÍVEIS
-                                    ticks='outside' if mostrar_ticks_fisicos else '' # <--- SÓ O TRAÇO SOME
+                                    showticklabels=True,
+                                    ticks='outside' if mostrar_ticks_fisicos else ''
                                 ),
                                 xaxis=dict(
                                     title=dict(text=cfg['label_x'], font=dict(color=cor_texto_eixos)), 
@@ -2468,8 +2466,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     mirror=mirror_bool, 
                                     tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), 
                                     categoryorder='array', categoryarray=ordem_trats,
-                                    showticklabels=True, # <--- NOMES SEMPRE VISÍVEIS
-                                    ticks='outside' if mostrar_ticks_fisicos else '' # <--- SÓ O TRAÇO SOME
+                                    showticklabels=True,
+                                    ticks='outside' if mostrar_ticks_fisicos else ''
                                 )
                             )
                             if cfg['mostrar_subgrade']:
@@ -2483,97 +2481,76 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         if st.button("Voltar ao Original", key=f"reset_sqrt_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
-elif modo_app == "📊 Análise Estatística":
-    st.info("👈 Faça upload do arquivo para começar.")
-# ==============================================================================
-# 🏁 FIM DO BLOCO 20
-# ==============================================================================
-
-
-# ==============================================================================
-# 📂 BLOCO 21: Captura de Dados para o Relatório Geral (Correção de Indentação)
-# ==============================================================================
-                # Esta linha deve ficar alinhada com o código do Bloco 20 acima
+                # --- LÓGICA DE CAPTURA DO RELATÓRIO (ANTIGO BLOCO 21) ---
+                # Esta parte ESTÁ DENTRO DO LOOP, logo abaixo de toda a análise
                 if 'analise_valida' in locals() and analise_valida:
                     
-                    # Segurança para variáveis que podem não existir
-                    p_shap_val = res_analysis.get('shapiro', (0,0))[1] if 'res_analysis' in locals() and res_analysis else 0
-                    p_lev_val = res_analysis.get('levene', (0,0))[1] if 'res_analysis' in locals() and res_analysis else 0
+                    p_shap_val = res_analysis.get('shapiro', (0,0))[1] if res_analysis else 0
+                    p_lev_val = res_analysis.get('levene', (0,0))[1] if res_analysis else 0
                     
-                    # Garante que a lista existe (caso o Bloco 14 não tenha sido atualizado)
-                    if 'dados_para_relatorio_final' not in locals():
-                        dados_para_relatorio_final = []
-
-                    # Captura os dados desta variável
+                    # Salva os dados na memória global
                     dados_para_relatorio_final.append({
                         "var": col_resp, 
                         "transf": transf_atual,
                         "n_reps": df_proc.groupby(col_trat)[col_resp].count().min(),
                         "p_shapiro": p_shap_val,
                         "p_levene": p_lev_val,
-                        "cv": cv_val if 'cv_val' in locals() else 0,
+                        "cv": cv_val,
                         "tipo_analise": "Não-Paramétrica" if (transf_atual != "Nenhuma" and not analise_valida) or not analise_valida else "Paramétrica (ANOVA)",
-                        "p_anova": p_final_trat if 'p_final_trat' in locals() else 1.0,
-                        "significativo": True if 'p_final_trat' in locals() and p_final_trat < 0.05 else False,
+                        "p_anova": p_final_trat,
+                        "significativo": True if p_final_trat < 0.05 else False,
                         "media_geral": df_proc[col_resp].mean(),
                         "melhor_trat": df_proc.groupby(col_trat)[col_resp].mean().idxmax(),
                         "data_hora": pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')
                     })
-# ==============================================================================
-# 🏁 FIM DO BLOCO 21
-# ==============================================================================
 
-
-# ==============================================================================
-# 📂 BLOCO 22: Exibição do Relatório Consolidado (Fora do Loop)
-# ==============================================================================
-# ATENÇÃO: Este bloco deve ficar ALINHADO À ESQUERDA (ou no mesmo nível do 'if' principal)
-
-# Verifica se há dados para gerar o relatório
-if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
-    st.markdown("---")
-    st.header("📑 Relatório Executivo Consolidado")
-    st.success(f"✅ Processamento concluído para {len(dados_para_relatorio_final)} variáveis.")
-    st.info("👇 Clique abaixo para abrir o dossiê completo. Use **Ctrl + P** para salvar como PDF.")
-
-    with st.expander("📄 Abrir Dossiê Completo (Todas as Variáveis)", expanded=False):
-        
-        st.markdown(f"# Relatório de Análise Experimental: AgroStat Pro")
-        st.markdown(f"**Data de Emissão:** {dados_para_relatorio_final[0]['data_hora']}")
-        
-        for item in dados_para_relatorio_final:
-            st.markdown("---")
-            st.markdown(f"## 📊 Variável: {item['var']}")
-            
-            # Redação Automática
-            intro = f"Para a variável **{item['var']}**, a análise iniciou-se com a verificação dos pressupostos."
-            if item['p_shapiro'] < 0.05:
-                intro += f" Os dados originais **não apresentaram normalidade** (P={item['p_shapiro']:.4f})."
-            else:
-                intro += f" Os dados apresentaram **distribuição normal** (P={item['p_shapiro']:.4f})."
-            
-            metodo = ""
-            if "Não-Paramétrica" in item['tipo_analise']:
-                metodo = f"Devido às violações nos pressupostos, optou-se pela **Análise Não-Paramétrica** (baseada em postos). A transformação utilizada foi: **{item['transf']}**."
-            else:
-                metodo = f"Como os pressupostos foram atendidos (ou corrigidos), utilizou-se a **Análise Paramétrica (ANOVA)**. Transformação: **{item['transf']}**."
-
-            conclusao = ""
-            if item['significativo']:
-                conclusao = f"✅ **Resultado:** Houve **diferença estatística significativa** entre os tratamentos (P < 0.05). O tratamento com maior média numérica foi **{item['melhor_trat']}**. O coeficiente de variação (CV) foi de **{item['cv']:.2f}%**."
-            else:
-                conclusao = f"❌ **Resultado:** Não houve diferença estatística significativa entre os tratamentos (P > 0.05). As variações observadas são naturais do acaso."
-
-            st.markdown(f"""
-            **1. Diagnóstico:** {intro}  
-            **2. Metodologia:** {metodo}  
-            **3. Conclusão:** {conclusao}
-            """)
-        
+    # --- FORA DO LOOP: EXIBIÇÃO DO RELATÓRIO FINAL (ANTIGO BLOCO 22) ---
+    if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
         st.markdown("---")
-        st.markdown("###### 🤖 Relatório gerado automaticamente por inteligência computacional (AgroStat Pro).")
+        st.header("📑 Relatório Executivo Consolidado")
+        st.success("✅ Todas as variáveis foram processadas com sucesso.")
+        st.info("👇 Clique abaixo para gerar o dossiê completo em PDF (Use Ctrl+P para salvar).")
+
+        with st.expander("📄 Abrir Dossiê Completo (Todas as Variáveis)", expanded=False):
+            
+            st.markdown(f"# Relatório de Análise Experimental: AgroStat Pro")
+            st.markdown(f"**Data de Emissão:** {dados_para_relatorio_final[0]['data_hora']}")
+            
+            for item in dados_para_relatorio_final:
+                st.markdown("---")
+                st.markdown(f"## 📊 Variável: {item['var']}")
+                
+                intro = f"Para a variável **{item['var']}**, a análise iniciou-se com a verificação dos pressupostos."
+                if item['p_shapiro'] < 0.05:
+                    intro += f" Os dados originais **não apresentaram normalidade** (P={item['p_shapiro']:.4f})."
+                else:
+                    intro += f" Os dados apresentaram **distribuição normal** (P={item['p_shapiro']:.4f})."
+                
+                metodo = ""
+                if "Não-Paramétrica" in item['tipo_analise']:
+                    metodo = f"Devido às violações nos pressupostos, optou-se pela **Análise Não-Paramétrica** (baseada em postos). A transformação utilizada foi: **{item['transf']}**."
+                else:
+                    metodo = f"Como os pressupostos foram atendidos (ou corrigidos), utilizou-se a **Análise Paramétrica (ANOVA)**. Transformação: **{item['transf']}**."
+
+                conclusao = ""
+                if item['significativo']:
+                    conclusao = f"✅ **Resultado:** Houve **diferença estatística significativa** entre os tratamentos (P < 0.05). O tratamento com maior média numérica foi **{item['melhor_trat']}**. O coeficiente de variação (CV) foi de **{item['cv']:.2f}%**."
+                else:
+                    conclusao = f"❌ **Resultado:** Não houve diferença estatística significativa entre os tratamentos (P > 0.05). As variações observadas são naturais do acaso."
+
+                st.markdown(f"""
+                **1. Diagnóstico:** {intro}  
+                **2. Metodologia:** {metodo}  
+                **3. Conclusão:** {conclusao}
+                """)
+            
+            st.markdown("---")
+            st.markdown("###### 🤖 Relatório gerado automaticamente por inteligência computacional (AgroStat Pro).")
+
+elif modo_app == "📊 Análise Estatística":
+    st.info("👈 Faça upload do arquivo para começar.")
 # ==============================================================================
-# 🏁 FIM DO BLOCO 22
+# 🏁 FIM DO BLOCO 20 + 21 + 22 (FIM DA LÓGICA DE ANÁLISE)
 # ==============================================================================
 
 
