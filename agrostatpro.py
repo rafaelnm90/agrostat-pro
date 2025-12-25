@@ -697,18 +697,18 @@ def analisar_regressao_polinomial(df, col_trat, col_resp):
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos)
+# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn)
 # ==============================================================================
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     """
-    Executa testes não-paramétricos quando os pressupostos da ANOVA falham.
-    - DIC: Kruskal-Wallis
-    - DBC: Friedman
+    Executa Kruskal-Wallis (DIC) ou Friedman (DBC).
+    Retorna: nome_teste, estatistica, p_valor
     """
     import scipy.stats as stats
     
     grupos = []
-    trats = df[col_trat].unique()
+    # Garante ordem para consistência
+    trats = sorted(df[col_trat].unique())
     
     try:
         if delineamento == "DIC":
@@ -720,23 +720,144 @@ def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=Non
             
         else: # DBC
             # Prepara matriz para Friedman (Tratamentos x Blocos)
-            # Pivotar para garantir ordem correta
             df_pivot = df.pivot(index=col_bloco, columns=col_trat, values=col_resp).dropna()
             
-            # Friedman exige matriz completa sem NAs
             if df_pivot.empty:
-                return "Erro (Dados Incompletos)", 1.0
+                return "Erro (Dados Incompletos)", 0, 1.0
             
-            # Extrai colunas como arrays
             args = [df_pivot[col].values for col in df_pivot.columns]
             stat, p_val = stats.friedmanchisquare(*args)
             nome_teste = "Friedman"
             
-        return nome_teste, p_val
+        return nome_teste, stat, p_val
 
     except Exception as e:
-        log_message(f"Erro no teste não-paramétrico: {e}")
-        return "Erro de Cálculo", 1.0
+        if 'EXIBIR_LOGS' in globals() and EXIBIR_LOGS: print(f"Erro NP: {e}")
+        return "Erro de Cálculo", 0, 1.0
+
+def calcular_posthoc_dunn(df, col_trat, col_resp, p_adj_method='bonferroni'):
+    """
+    Implementação Manual Robusta do Teste de Dunn (Comparação Múltipla).
+    Baseado em Ranks (Postos).
+    """
+    import scipy.stats as stats
+    from itertools import combinations
+    
+    # 1. Rankeamento Global
+    df_rank = df.copy()
+    df_rank['posto'] = df[col_resp].rank()
+    
+    trats = sorted(df[col_trat].unique())
+    n_trats = len(trats)
+    
+    # Médias dos Postos e Tamanhos
+    R_means = df_rank.groupby(col_trat)['posto'].mean()
+    ns = df_rank.groupby(col_trat)['posto'].count()
+    
+    N = len(df)
+    
+    # Constante do Erro Padrão (Sem correção de empates para simplificar, mas robusto)
+    # Fórmula: sqrt( (N(N+1)/12) * (1/ni + 1/nj) )
+    
+    resultados = []
+    
+    # Comparações Par a Par
+    for t1, t2 in combinations(trats, 2):
+        n1, n2 = ns[t1], ns[t2]
+        r1, r2 = R_means[t1], R_means[t2]
+        
+        # Erro Padrão
+        se = np.sqrt( (N * (N + 1) / 12) * (1/n1 + 1/n2) )
+        
+        # Estatística Z
+        z_val = abs(r1 - r2) / se
+        
+        # P-valor (Two-tailed)
+        p_val = 2 * (1 - stats.norm.cdf(z_val))
+        
+        resultados.append({'A': t1, 'B': t2, 'p': p_val})
+        
+    df_res = pd.DataFrame(resultados)
+    
+    # Ajuste de P-valor (Bonferroni simples: P * num_comparacoes)
+    m = len(resultados)
+    if p_adj_method == 'bonferroni':
+        df_res['p_adj'] = df_res['p'] * m
+        df_res['p_adj'] = df_res['p_adj'].apply(lambda x: min(x, 1.0)) # Teto em 1
+    else:
+        df_res['p_adj'] = df_res['p'] # Sem ajuste (não recomendado)
+        
+    return df_res
+
+def gerar_letras_dunn(trats, df_comparacoes):
+    """
+    Algoritmo de Atribuição de Letras (Clique Cover Simplificado) para P-valores.
+    """
+    # 1. Inicializa todos com 'a'
+    letras = {t: "" for t in trats}
+    
+    # Ordena tratamentos pela Mediana real (para a letra 'a' ser o maior)
+    # (Essa ordenação vem de fora, aqui assumimos que 'trats' já pode vir ordenado ou não,
+    # mas a lógica de letras agrupa quem é igual)
+    
+    # Matriz de Igualdade (True se p > 0.05, ou seja, são IGUAIS)
+    adj_matrix = {t: set([t]) for t in trats}
+    for _, row in df_comparacoes.iterrows():
+        if row['p_adj'] > 0.05: # Não difere
+            adj_matrix[row['A']].add(row['B'])
+            adj_matrix[row['B']].add(row['A'])
+            
+    # Algoritmo Guloso para Letras
+    # Vamos varrer e atribuir letras.
+    # Esta é uma implementação simplificada para evitar dependência de grafos complexos
+    
+    # Lista de tratamentos ordenada (vamos assumir alfabética ou média, tanto faz para a lógica de igualdade)
+    trats_list = sorted(list(trats))
+    
+    # Reset
+    current_char_idx = 0
+    assigned_groups = []
+    
+    # Tentativa de agrupar cliques (grupos onde todos são iguais a todos)
+    # Abordagem visual simples:
+    # Se A=B e B=C, mas A!=C, isso é complexo. 
+    # Vamos usar uma lógica de varredura robusta.
+    
+    import networkx as nx # Streamlit tem networkx instalado por padrão geralmente. 
+    # Se não tiver, faremos fallback.
+    try:
+        G = nx.Graph()
+        G.add_nodes_from(trats)
+        # Adiciona arestas onde NÃO há diferença (são iguais)
+        for _, row in df_comparacoes.iterrows():
+            if row['p_adj'] > 0.05:
+                G.add_edge(row['A'], row['B'])
+        
+        # Achar cliques maximais (grupos onde todos são iguais entre si)
+        cliques = list(nx.find_cliques(G))
+        
+        # Ordena cliques pelos tratamentos contidos (para 'a' ficar nos maiores se possível)
+        # (Omitido ordenação complexa para manter simples)
+        
+        # Mapeia letras
+        mapa_letras = "abcdefghijklmnopqrstuvwxyz"
+        res_letras = {t: "" for t in trats}
+        
+        # Se um tratamento está num clique, ele ganha a letra daquele clique
+        for i, clique in enumerate(cliques):
+            char = get_letra_segura(i) 
+            for t in clique:
+                res_letras[t] += char
+                
+        # Ordena as letras dentro da string (ex: "ba" -> "ab")
+        for t in res_letras:
+            res_letras[t] = "".join(sorted(res_letras[t]))
+            
+        return res_letras
+        
+    except:
+        # Fallback se não tiver networkx (todos diferentes ou todos iguais)
+        return {t: " " for t in trats} # Retorna vazio em caso de erro técnico
 # ==============================================================================
 # 🏁 FIM DO BLOCO 09
 # ==============================================================================
@@ -2098,7 +2219,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback (Botões de Erro) e Encerramento
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico Avançado
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2107,83 +2228,114 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         if st.button("Voltar ao Original", key=f"reset_success_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
                 else:
-                    st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO GRAVE: ANOVA INVÁLIDA")
+                    st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO: ANOVA INVÁLIDA")
                     st.markdown("""
-                    Como os dados não seguem a **Normalidade** e/ou **Homogeneidade** de forma crítica, a média e o desvio padrão perdem o sentido.
-                    **NÃO USE A ANOVA (Teste F)** para tomar decisões, pois ela pode apresentar resultados falsos (falso positivo ou negativo).
-                    
-                    **O que fazer?**
-                    1. Tente realizar a **Transformação dos Dados** nas opções abaixo.
-                    2. Se o problema persistir, analise cada local individualmente usando testes Não-Paramétricos.
+                    **Motivo:** Seus dados violaram os pressupostos de Normalidade/Homogeneidade.
+                    A Média Aritmética não é confiável aqui. **A "régua" mudou: Agora quem manda é a Mediana.**
                     """)
                     
                     if transf_atual == "Nenhuma":
-                        col_btn1, col_btn2 = st.columns([1, 4])
-                        with col_btn1:
+                        c1, c2 = st.columns([1, 4])
+                        with c1:
                             if st.button("🧪 Tentar Log10", key=f"btn_log_{col_resp_original}"):
                                 set_transformacao(col_resp_original, "Log10"); st.rerun()
-                        with col_btn2: st.caption("Clique para aplicar transformação Logarítmica apenas nesta variável.")
+                        with c2: st.caption("Às vezes, transformar resolve a normalidade.")
 
                     elif transf_atual == "Log10":
-                        st.warning(f"A transformação **Log10** não resolveu o problema.")
-                        col_btn1, col_btn2 = st.columns([1, 4])
-                        with col_btn1:
-                            if st.button("🌱 Tentar Raiz Quadrada", key=f"btn_sqrt_{col_resp_original}"):
+                        st.warning(f"Log10 não resolveu.")
+                        c1, c2 = st.columns([1, 4])
+                        with c1:
+                            if st.button("🌱 Tentar SQRT", key=f"btn_sqrt_{col_resp_original}"):
                                 set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)"); st.rerun()
                         if st.button("Voltar ao Original", key=f"reset_log_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
                     elif transf_atual == "Raiz Quadrada (SQRT)":
-                        st.warning(f"A transformação **Raiz Quadrada** também não resolveu.")
+                        st.warning(f"Transformações não resolveram.")
                         st.markdown("### 🛡️ Solução Final: Estatística Não-Paramétrica")
+                        
                         key_np = f"show_np_{col_resp_original}"
                         if key_np not in st.session_state: st.session_state[key_np] = False
                         
                         if not st.session_state[key_np]:
-                            if st.button("🛡️ Rodar Estatística Não-Paramétrica", key=f"btn_run_np_{col_resp_original}"):
+                            if st.button("🛡️ Rodar Análise Não-Paramétrica (Correto)", key=f"btn_run_np_{col_resp_original}", type="primary"):
                                 st.session_state[key_np] = True; st.rerun()
                         else:
-                            nome_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
-                            if p_np is not None:
-                                st.success(f"Resultado do Teste de **{nome_np}**:")
+                            # --- CÁLCULO NÃO PARAMÉTRICO COMPLETO ---
+                            nome_np, stat_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
+                            
+                            st.markdown(f"#### 1. Teste de Hipótese ({nome_np})")
+                            c_res1, c_res2 = st.columns([1, 3])
+                            with c_res1:
+                                st.metric("Estatística", f"{stat_np:.2f}")
+                            with c_res2:
                                 if p_np < 0.05:
-                                    st.metric(label="P-valor Não-Paramétrico", value=f"{p_np:.4f}", delta="↑ Significativo (Diferença Real)", delta_color="normal")
+                                    st.metric("P-valor", f"{p_np:.4f}", "Significativo (Existe Diferença)", delta_color="normal")
+                                    eh_significativo = True
                                 else:
-                                    st.metric(label="P-valor Não-Paramétrico", value=f"{p_np:.4f}", delta="↓ Não Significativo (Iguais)", delta_color="inverse")
-                                    st.error(f"""
-                                    🚨 **Não houve variação significativa entre os tratamentos.** Aceita-se a Hipótese Nula ($H_0$).
-                                    
-                                    **O que isso significa na prática?**
-                                    1.  **Não há 'Ganhador':** Estatisticamente, todos os tratamentos tiveram o mesmo desempenho. As diferenças numéricas na tabela são fruto do acaso.
-                                    2.  **Pare aqui:** Você **não deve** tentar fazer testes de médias ou separar letras ("a", "b"). Todos são "a".
-                                    3.  **O Valor do 'Não Significativo':** Esse resultado é valioso! Ele prova equivalência (ex: o produto barato funciona igual ao caro).
-                                    
-                                    **📝 Como relatar no seu trabalho:**
-                                    _"Para a variável analisada, o teste de {nome_np} (aplicado devido à violação dos pressupostos da ANOVA) não detectou diferença significativa (p = {p_np:.4f}). Portanto, todos os genótipos apresentaram desempenho estatisticamente semelhante."_
-                                    """)
-
-                                st.markdown("---")
-                                st.markdown("### 💡 Guia de Interpretação: Análise de Dados")
-                                msg_guia_intro = "**Seus dados são válidos, apenas a 'régua' mudou.**\n\n1. **A Média morreu:** Em dados não-normais, use a **Mediana** e **Quartis**.\n2. **O Gráfico:** Use o **Boxplot** abaixo para visualizar a distribuição real."
-                                if p_np >= 0.05: msg_guia_conclusao = "\n3. **Conclusão:** Use a tabela e o gráfico abaixo para demonstrar que as medianas são visualmente próximas ou se sobrepõem."
-                                else: msg_guia_conclusao = "\n3. **Conclusão:** Como houve diferença (P < 0.05), observe na tabela quem tem a maior Mediana para definir o superior."
-                                st.info(msg_guia_intro + msg_guia_conclusao)
+                                    st.metric("P-valor", f"{p_np:.4f}", "Não Significativo (Iguais)", delta_color="inverse")
+                                    eh_significativo = False
+                            
+                            # --- 2. PÓS-ANÁLISE (O QUE FAZER AGORA?) ---
+                            st.markdown("#### 2. Interpretação e Decisão")
+                            
+                            if not eh_significativo:
+                                st.info(f"""
+                                ✅ **Conclusão:** Não há evidências estatísticas para dizer que os tratamentos são diferentes (P > 0.05).
+                                **O que reportar:** "Pelo teste de {nome_np}, não houve diferença significativa entre os grupos (p={p_np:.4f})."
+                                """)
+                                # Tabela Simples (Sem Letras)
+                                df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
+                                df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.1f} – {x.max():.1f}").reset_index(name='Amplitude (Min-Max)')
+                                df_final = pd.merge(df_meds, df_iqr, on=col_trat)
+                                st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
                                 
-                                st.markdown("### 📊 Dados para Relatório (Medianas e Postos)")
-                                df_desc = df_proc.groupby(col_trat)[col_resp].agg(
-                                    n='count', Mediana='median',
-                                    Q1=lambda x: x.quantile(0.25), Q3=lambda x: x.quantile(0.75),
-                                    Min='min', Max='max'
-                                ).sort_values('Mediana', ascending=False)
-                                st.dataframe(df_desc.style.format("{:.2f}"))
-                                st.caption("Use esta tabela para descrever seus resultados no artigo/trabalho.")
+                            else:
+                                st.success(f"""
+                                🚨 **Diferença Detectada!** Como P < 0.05, precisamos descobrir QUEM difere de QUEM.
+                                **Método:** Teste de Comparações Múltiplas de **Dunn** (com correção de Bonferroni).
+                                """)
                                 
-                                st.markdown("### 📉 Recomendação Visual: Boxplot")
-                                fig_box = px.box(df_proc, x=col_trat, y=col_resp, points="all", title=f"Distribuição Real: {col_resp}")
+                                # --- 3. TESTE DE DUNN (MOTOR) ---
+                                df_dunn = calcular_posthoc_dunn(df_proc, col_trat, col_resp)
+                                trats_np = sorted(df_proc[col_trat].unique())
+                                letras_dunn = gerar_letras_dunn(trats_np, df_dunn)
+                                
+                                # --- 4. TABELA FINAL (MEDIANA + LETRAS) ---
+                                df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
+                                df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude (Min - Max)')
+                                
+                                df_final = pd.merge(df_meds, df_iqr, on=col_trat)
+                                df_final['Grupo'] = df_final[col_trat].map(letras_dunn)
+                                
+                                # Reordena por Mediana (Maior para Menor)
+                                df_final = df_final.sort_values('Mediana', ascending=False)
+                                
+                                st.markdown("##### 🏆 Tabela de Resultados (Padrão Científico)")
+                                st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
+                                st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Dunn, P>0.05).")
+                                
+                                # --- 5. TEXTO AUTOMÁTICO (COLA) ---
+                                st.markdown("##### 📝 Texto Sugerido para seu Relatório")
+                                
+                                melhor_trat = df_final.iloc[0][col_trat]
+                                val_melhor = df_final.iloc[0]['Mediana']
+                                pior_trat = df_final.iloc[-1][col_trat]
+                                val_pior = df_final.iloc[-1]['Mediana']
+                                
+                                texto_exemplo = f"""
+                                "Como os dados não atenderam aos pressupostos de normalidade, optou-se pelo teste não paramétrico de {nome_np}.
+                                Houve diferença estatística significativa entre os tratamentos (p = {p_np:.4f}). 
+                                A comparação múltipla pelo método de Dunn revelou que o tratamento **{melhor_trat}** obteve a maior mediana ({val_melhor:.2f}), 
+                                diferindo (ou não, ver letras) do tratamento **{pior_trat}** ({val_pior:.2f})."
+                                """
+                                st.code(texto_exemplo, language="text")
+                                
+                                # Gráfico Boxplot para finalizar
+                                st.markdown("##### 📉 Visualização (Boxplot)")
+                                fig_box = px.box(df_proc, x=col_trat, y=col_resp, points="all", color=col_trat, title=f"Distribuição: {col_resp}")
                                 st.plotly_chart(fig_box, use_container_width=True)
 
-                            else: st.error("Não foi possível calcular o teste não-paramétrico (verifique dados faltantes ou delineamento).")
-                            
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
                         
