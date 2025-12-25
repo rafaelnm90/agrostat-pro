@@ -139,7 +139,7 @@ def classificar_cv(cv):
     elif cv < 30: return "🟠 Alto (Baixa Precisão)"
     else: return "🔴 Muito Alto (Inadequado)"
 
-# --- NOVAS FUNÇÕES PARA TABELA CIENTÍFICA (MÉDIA GERAL + CV) ---
+# --- NOVAS FUNÇÕES PARA TABELA CIENTÍFICA (COM RODAPÉ FIXO) ---
 
 def mostrar_editor_tabela(key_prefix):
     """Menu para personalizar a tabela de médias."""
@@ -151,7 +151,9 @@ def mostrar_editor_tabela(key_prefix):
 
 def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, show_cv):
     """
-    Insere Média Geral e CV como linhas no final do DataFrame.
+    Retorna DOIS dataframes: 
+    1. Dados Principais (Ordenável)
+    2. Rodapé Estatístico (Fixo)
     """
     # 1. Trabalha com cópia para não afetar o original
     df_final = df_medias.copy()
@@ -170,7 +172,6 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
         })
         
     if show_cv:
-        # CV = (DesvioPadrao / Media) * 100 -> DP = Raiz(QMres)
         if mse_resid > 0:
             cv_val = (np.sqrt(mse_resid) / media_geral) * 100
             txt_cv = f"{cv_val:.2f}"
@@ -183,20 +184,15 @@ def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, sh
             'Grupos': ''
         })
         
+    # Prepara o DataFrame do Rodapé (se houver algo selecionado)
+    df_footer = None
     if rows_to_add:
-        # Reseta index para adicionar linhas
-        df_final = df_final.reset_index()
-        col_index = df_final.columns[0]
-        df_final = df_final.rename(columns={col_index: 'Tratamento'})
-        
         df_footer = pd.DataFrame(rows_to_add)
-        df_export = pd.concat([df_final, df_footer], ignore_index=True)
-        
-        # Define Tratamento como index para o st.dataframe exibir bonito
-        df_export = df_export.set_index('Tratamento')
-        return df_export
-    else:
-        return df_final
+        # Ajusta nomes para alinhar visualmente (mesmo que em tabelas separadas)
+        df_footer = df_footer.set_index('Tratamento')
+    
+    # Retorna separado: Dados Puros (para ordenar) e Estatísticas (para fixar)
+    return df_final, df_footer
 # ==============================================================================
 # 🏁 FIM DO BLOCO 03
 # ==============================================================================
@@ -1910,7 +1906,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 18: Visualização - Análise Individual (Tukey/Scott-Knott + Tabela Pro)
+# 📂 BLOCO 18: Visualização - Análise Individual (Rodapé Fixo + Tabela Pro)
 # ==============================================================================
                 if analise_valida:
                     
@@ -2004,8 +2000,17 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 
                                 st.markdown("#### Ranking Geral (Tukey)")
                                 show_m_tk, show_cv_tk = mostrar_editor_tabela(f"tk_ind_{col_resp}_{i}")
-                                df_tk_final = preparar_tabela_publicacao(df_tukey_ind, media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
-                                st.dataframe(df_tk_final, use_container_width=True)
+                                
+                                # RECEBE AS DUAS TABELAS SEPARADAS
+                                df_tk_dados, df_tk_rodape = preparar_tabela_publicacao(df_tukey_ind, media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
+                                
+                                # 1. TABELA PRINCIPAL (ORDENÁVEL)
+                                st.dataframe(df_tk_dados, use_container_width=True)
+                                
+                                # 2. RODAPÉ FIXO (SE EXISTIR)
+                                if df_tk_rodape is not None:
+                                    st.markdown("###### 📊 Estatísticas do Ensaio")
+                                    st.dataframe(df_tk_rodape, use_container_width=True)
                                 
                                 st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Tukey a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_tk else ''}")
                                 
@@ -2030,8 +2035,17 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                                 st.markdown("#### Ranking Geral (Scott-Knott)")
                                 show_m_sk, show_cv_sk = mostrar_editor_tabela(f"sk_ind_{col_resp}_{i}")
-                                df_sk_final = preparar_tabela_publicacao(df_sk_ind, media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
-                                st.dataframe(df_sk_final, use_container_width=True)
+                                
+                                # RECEBE AS DUAS TABELAS SEPARADAS
+                                df_sk_dados, df_sk_rodape = preparar_tabela_publicacao(df_sk_ind, media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
+                                
+                                # 1. TABELA PRINCIPAL (ORDENÁVEL)
+                                st.dataframe(df_sk_dados, use_container_width=True)
+                                
+                                # 2. RODAPÉ FIXO (SE EXISTIR)
+                                if df_sk_rodape is not None:
+                                    st.markdown("###### 📊 Estatísticas do Ensaio")
+                                    st.dataframe(df_sk_rodape, use_container_width=True)
                                 
                                 st.markdown(f"> **Nota de Rodapé da Tabela:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Scott-Knott a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_sk else ''}")
                                 
