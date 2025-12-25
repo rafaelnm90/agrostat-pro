@@ -1524,7 +1524,7 @@ elif modo_app == "🎲 Sorteio Experimental":
 
 
 # ==============================================================================
-# 📂 BLOCO 14: Execução Principal - Setup e Métricas
+# 📂 BLOCO 14: Execução Principal - Setup, Métricas e Inicialização do Relatório
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1567,6 +1567,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
             st.info(f"🔬 **Esquema Fatorial Detectado:** {esquema_txt} ({' x '.join(cols_trats)})")
         else:
             log_message(f"✅ Experimento Unifatorial [{esquema_txt}] identificado.")
+
+        # --- IMPORTANTE: INICIALIZA A LISTA DE MEMÓRIA PARA O RELATÓRIO FINAL ---
+        dados_para_relatorio_final = [] 
+        # ------------------------------------------------------------------------
 
         for i, col_resp_original in enumerate(lista_resps):
             with st.expander(f"📊 Variável: {col_resp_original}", expanded=(i==0)):
@@ -2487,110 +2491,94 @@ elif modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Gerador de Relatório Executivo (Correção de Erro NameError)
+# 📂 BLOCO 21 (MODIFICADO): Captura de Dados para o Relatório Geral
 # ==============================================================================
-# Adicione este bloco LOGO APÓS o Bloco 20 (ou no final do script)
-
-# A CORREÇÃO ESTÁ NESTA LINHA ABAIXO:
-if 'analise_valida' in locals() and analise_valida and modo_app != "🏠 Início":
-    
-    st.markdown("---")
-    st.header("📑 Relatório Executivo (Laudo Automático)")
-    
-    with st.expander("Ver Relatório Completo (Para Entregar ao Chefe)", expanded=False):
-        # --- 1. COLETA DE FATOS (O ROBÔ ANALISA O QUE ACONTECEU) ---
-        fatos = {
-            "var": col_resp,
-            "transf": transf_atual,
-            "n_reps": df_proc.groupby(col_trat)[col_resp].count().min(),
-            "p_shapiro": res['shapiro']['p_val'] if res.get('shapiro') else 0,
-            "p_levene": res['levene']['p_val'] if res.get('levene') else 0,
-            "cv": res['cv'],
-            "tipo_analise": "Não-Paramétrica" if not res['anova_valid'] or (transf_atual != "Nenhuma" and not res['anova_valid']) else "Paramétrica (ANOVA)",
-            "p_anova": res['p_val'] if 'p_val' in res else 0,
-            "significativo": True if res.get('p_val', 1) < 0.05 else False
-        }
-        
-        # --- 2. MOTOR DE REDAÇÃO (O ROBÔ ESCREVE) ---
-        
-        # Parágrafo 1: Introdução e Qualidade dos Dados
-        texto_intro = f"""
-        **1. Qualidade dos Dados e Pressupostos**
-        A análise foi realizada para a variável **'{fatos['var']}'**. Inicialmente, realizou-se o teste de normalidade de Shapiro-Wilk e o teste de homogeneidade de variâncias.
-        """
-        
-        if fatos['p_shapiro'] < 0.05:
-            texto_intro += f" Os dados originais **não apresentaram distribuição normal** (P={fatos['p_shapiro']:.4f}), o que viola o pressuposto básico da ANOVA."
-        else:
-            texto_intro += f" Os dados apresentaram **distribuição normal** (P={fatos['p_shapiro']:.4f}), atendendo ao pressuposto estatístico."
-            
-        # Parágrafo 2: Ações Corretivas (Transformação)
-        texto_acao = ""
-        if fatos['transf'] != "Nenhuma":
-            texto_acao = f"""
-            **2. Tratamento dos Dados**
-            Devido à violação dos pressupostos ou alta dispersão, optou-se pela transformação dos dados utilizando o método **{fatos['transf']}**.
-            Essa técnica tem como objetivo reduzir a variância entre as repetições e tentar aproximar os dados da normalidade para permitir uma análise mais justa.
-            """
-        else:
-            texto_acao = f"""
-            **2. Tratamento dos Dados**
-            Os dados foram mantidos em sua escala original, sem necessidade de transformação matemática, preservando as unidades reais de medida.
-            """
-            
-        # Parágrafo 3: Decisão do Método (O "Porquê" da Análise)
-        if "Não-Paramétrica" in fatos['tipo_analise']:
-            texto_metodo = f"""
-            **3. Metodologia Estatística Escolhida: Análise Não-Paramétrica**
-            **Por que não usamos a ANOVA (Média)?** Mesmo após a verificação (e eventuais tentativas de transformação), os dados não atenderam aos critérios rígidos de normalidade e homogeneidade exigidos pela ANOVA. Utilizar a média aritmética simples neste cenário levaria a conclusões erradas (Falsos Positivos).
-            
-            **O que foi feito?** Optou-se pela estatística robusta baseada em **Medianas e Postos** (Rankings). 
-            - Se o N < 5, priorizou-se a visualização dos dados reais.
-            - O teste de hipótese utilizado considera a posição de cada dado em relação aos outros, eliminando o efeito de valores extremos (outliers).
-            """
-        else:
-            texto_metodo = f"""
-            **3. Metodologia Estatística Escolhida: Análise Paramétrica (ANOVA)**
-            **Por que usamos a ANOVA?** Os dados atenderam satisfatoriamente aos pressupostos de normalidade e homogeneidade. Isso valida o uso da Média e do Desvio Padrão como estimadores confiáveis. O Teste F da ANOVA é a ferramenta mais potente (maior poder estatístico) para este cenário.
-            """
-            
-        # Parágrafo 4: Conclusão Gerencial
-        if fatos['significativo']:
-            texto_conclusao = f"""
-            **4. Conclusão e Recomendação**
-            O teste estatístico detectou **diferença significativa** entre os tratamentos (P < 0.05). Isso significa que a variação observada não é fruto do acaso; os tratamentos realmente causaram efeitos diferentes.
-            Recomenda-se observar a Tabela de Médias/Medianas acima para identificar o grupo superior (Letra 'a'). 
-            O Coeficiente de Variação (CV) foi de **{fatos['cv']:.2f}%**, indicando a precisão experimental.
-            """
-        else:
-            texto_conclusao = f"""
-            **4. Conclusão e Recomendação**
-            Não foi detectada diferença estatística significativa entre os tratamentos (P > 0.05). Estatisticamente, **todos os tratamentos tiveram desempenho igual**.
-            Qualquer diferença visual nos gráficos deve ser atribuída ao erro aleatório ou variação natural do experimento, e não ao efeito dos tratamentos.
-            """
-
-        # --- 3. RENDERIZAÇÃO NA TELA ---
-        st.info("💡 **Dica:** Para salvar este relatório em PDF, pressione **Ctrl + P** no seu navegador e escolha 'Salvar como PDF'. O layout abaixo foi feito para ser impresso.")
-        
-        container_relatorio = st.container()
-        with container_relatorio:
-            st.markdown(f"## 📋 Relatório Técnico: {fatos['var']}")
-            st.markdown(f"**Data:** {pd.Timestamp.now().strftime('%d/%m/%Y')}")
-            st.markdown("---")
-            st.markdown(texto_intro)
-            st.markdown(texto_acao)
-            st.markdown(texto_metodo)
-            st.markdown(texto_conclusao)
-            
-            st.markdown("---")
-            st.caption("Relatório gerado automaticamente pelo AgroStat Pro.")
+                # Verifica se a análise foi válida antes de salvar
+                if 'analise_valida' in locals() and analise_valida:
+                    
+                    # Tenta pegar p-valores com segurança (usando .get para evitar erros)
+                    p_shap_val = res_analysis.get('shapiro', (0,0))[1] if res_analysis else 0
+                    p_lev_val = res_analysis.get('levene', (0,0))[1] if res_analysis else 0
+                    
+                    # Captura os dados desta variável e guarda na lista global
+                    dados_para_relatorio_final.append({
+                        "var": col_resp, # Nome da variável
+                        "transf": transf_atual,
+                        "n_reps": df_proc.groupby(col_trat)[col_resp].count().min(),
+                        "p_shapiro": p_shap_val,
+                        "p_levene": p_lev_val,
+                        "cv": cv_val, # Variável calculada no Bloco 14
+                        "tipo_analise": "Não-Paramétrica" if (transf_atual != "Nenhuma" and not analise_valida) or not analise_valida else "Paramétrica (ANOVA)",
+                        "p_anova": p_final_trat, # Variável calculada no Bloco 14
+                        "significativo": True if p_final_trat < 0.05 else False,
+                        "media_geral": df_proc[col_resp].mean(),
+                        "melhor_trat": df_proc.groupby(col_trat)[col_resp].mean().idxmax(),
+                        "data_hora": pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')
+                    })
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Planejamento (Sorteio Experimental)
+# 📂 BLOCO 22: Exibição do Relatório Consolidado (Fora do Loop)
+# ==============================================================================
+# ATENÇÃO: Este código deve rodar DEPOIS que o loop 'for i, col_resp...' terminar.
+
+    # Verifica se a lista foi criada e tem dados
+    if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
+        st.markdown("---")
+        st.header("📑 Relatório Executivo Consolidado")
+        st.success("✅ Todas as variáveis foram processadas com sucesso.")
+        st.info("👇 Clique abaixo para gerar o dossiê completo em PDF (Use Ctrl+P para salvar).")
+
+        with st.expander("📄 Abrir Dossiê Completo (Todas as Variáveis)", expanded=False):
+            
+            st.markdown(f"# Relatório de Análise Experimental: AgroStat Pro")
+            st.markdown(f"**Data de Emissão:** {dados_para_relatorio_final[0]['data_hora']}")
+            
+            # Loop para gerar o texto de cada variável guardada na lista
+            for item in dados_para_relatorio_final:
+                st.markdown("---")
+                st.markdown(f"## 📊 Variável: {item['var']}")
+                
+                # 1. Introdução
+                intro = f"Para a variável **{item['var']}**, a análise iniciou-se com a verificação dos pressupostos."
+                if item['p_shapiro'] < 0.05:
+                    intro += f" Os dados originais **não apresentaram normalidade** (P={item['p_shapiro']:.4f})."
+                else:
+                    intro += f" Os dados apresentaram **distribuição normal** (P={item['p_shapiro']:.4f})."
+                
+                # 2. Decisão Metodológica
+                metodo = ""
+                if "Não-Paramétrica" in item['tipo_analise']:
+                    metodo = f"Devido às violações nos pressupostos, optou-se pela **Análise Não-Paramétrica** (baseada em postos). A transformação utilizada foi: **{item['transf']}**."
+                else:
+                    metodo = f"Como os pressupostos foram atendidos (ou corrigidos), utilizou-se a **Análise Paramétrica (ANOVA)**. Transformação: **{item['transf']}**."
+
+                # 3. Conclusão
+                conclusao = ""
+                if item['significativo']:
+                    conclusao = f"✅ **Resultado:** Houve **diferença estatística significativa** entre os tratamentos (P < 0.05). O tratamento com maior média numérica foi **{item['melhor_trat']}**. O coeficiente de variação (CV) foi de **{item['cv']:.2f}%**."
+                else:
+                    conclusao = f"❌ **Resultado:** Não houve diferença estatística significativa entre os tratamentos (P > 0.05). As variações observadas são naturais do acaso."
+
+                # Renderiza o texto
+                st.markdown(f"""
+                **1. Diagnóstico:** {intro}  
+                **2. Metodologia:** {metodo}  
+                **3. Conclusão:** {conclusao}
+                """)
+            
+            st.markdown("---")
+            st.markdown("###### 🤖 Relatório gerado automaticamente por inteligência computacional (AgroStat Pro).")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 22
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 23: Planejamento (Sorteio Experimental)
 # ==============================================================================
 import random
 import pandas as pd
@@ -2781,11 +2769,11 @@ if modo_app == "🎲 Sorteio Experimental":
                 mime="text/csv"
             )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 22
+# 🏁 FIM DO BLOCO 23
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 23: Rodapé e Créditos (GLOBAL)
+# 📂 BLOCO 24: Rodapé e Créditos (GLOBAL)
 # ==============================================================================
 st.markdown("---")
 st.markdown(
@@ -2799,5 +2787,5 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 23
+# 🏁 FIM DO BLOCO 24
 # ==============================================================================
