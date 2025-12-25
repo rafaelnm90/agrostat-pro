@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Tabela Pro + Gráfico Correto)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Regra N < 5)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2296,17 +2296,27 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             df_final = df_final.sort_values('Mediana', ascending=False)
                             ordem_trats = df_final[col_trat].tolist()
                             
-                            # Exibe Tabela com Letras
                             st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
                             if eh_significativo: st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Teste de Dunn, P>0.05).")
                             
                             st.markdown("---")
 
-                            # 3. VISUALIZAÇÃO COM EDITOR (O PEDIDO DO VÍDEO)
+                            # 3. VISUALIZAÇÃO INTELIGENTE (Regra N < 5)
                             st.markdown("#### 📉 Visualização dos Dados")
-                            tipo_grafico = st.selectbox("Estilo do Gráfico:", ["📊 Barras + Erro (Híbrido)", "📦 Boxplot", "🎻 Violin Plot"], key=f"sel_graf_np_{col_resp_original}")
                             
-                            # --- AQUI ESTÁ O EDITOR QUE VOCÊ PEDIU ---
+                            # Verifica o N (número de repetições)
+                            min_reps = df_proc.groupby(col_trat)[col_resp].count().min()
+                            
+                            # Define o padrão com base no N
+                            opcoes_grafico = ["📦 Boxplot (Tradicional)", "📍 Strip Plot (Pontos)", "📊 Barras + Erro (Híbrido)", "🎻 Violin Plot (Densidade)"]
+                            idx_padrao = 0 # Default Boxplot
+                            
+                            if min_reps < 5:
+                                idx_padrao = 1 # Strip Plot
+                                st.info(f"💡 **Dica:** Como você tem poucas repetições (N={min_reps}), selecionamos automaticamente o **Strip Plot**. Boxplots não são confiáveis com menos de 5 dados.")
+                            
+                            tipo_grafico = st.selectbox("Estilo do Gráfico:", opcoes_grafico, index=idx_padrao, key=f"sel_graf_np_{col_resp_original}")
+                            
                             cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=True)
                             
                             import plotly.graph_objects as go
@@ -2327,8 +2337,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                                 fig_viz.add_trace(go.Bar(
                                     x=df_final[col_trat], y=df_final['Mediana'],
-                                    text=df_final['Grupo'], # AS LETRAS!
-                                    textposition='outside',
+                                    text=df_final['Grupo'], textposition='outside',
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos),
                                     name='Mediana', marker_color=cor_principal,
                                     error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cor_texto_eixos, thickness=1.5, width=5)
@@ -2359,14 +2368,24 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textposition='top center', showlegend=False,
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
-
-                            elif "Violin" in tipo_grafico:
-                                fig_viz.add_trace(go.Violin(
+                                
+                            elif "Strip Plot" in tipo_grafico:
+                                # Strip Plot "Honesto" (Apenas Pontos + Mediana sutil)
+                                fig_viz.add_trace(go.Box(
                                     x=df_proc[col_trat], y=df_proc[col_resp],
-                                    name="Dados", line_color=cor_principal, 
-                                    box_visible=True, points='all', fillcolor=cor_principal, opacity=0.6
+                                    name="Dados", 
+                                    boxpoints='all', jitter=0.3, pointpos=0,
+                                    fillcolor='rgba(0,0,0,0)', line=dict(width=0), # Remove caixa e linhas
+                                    marker=dict(color=cor_principal, size=10, opacity=0.8, line=dict(width=1, color=cor_texto_eixos)),
+                                    showlegend=False
                                 ))
-                                # Letras (Mesma lógica)
+                                # Adiciona traço da Mediana para referência
+                                fig_viz.add_trace(go.Scatter(
+                                    x=df_final[col_trat], y=df_final['Mediana'],
+                                    mode='markers', marker=dict(symbol='line-ew', size=40, color=cor_texto_eixos, line=dict(width=3)),
+                                    name='Mediana', hoverinfo='y'
+                                ))
+                                # Letras
                                 y_max_val = df_proc[col_resp].max()
                                 margin = (y_max_val - df_proc[col_resp].min()) * 0.1
                                 y_pos = []; txts = []
@@ -2379,7 +2398,25 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
 
-                            # APLICAÇÃO DE ESTILO
+                            elif "Violin" in tipo_grafico:
+                                fig_viz.add_trace(go.Violin(
+                                    x=df_proc[col_trat], y=df_proc[col_resp],
+                                    name="Dados", line_color=cor_principal, 
+                                    box_visible=True, points='all', fillcolor=cor_principal, opacity=0.6
+                                ))
+                                y_max_val = df_proc[col_resp].max()
+                                margin = (y_max_val - df_proc[col_resp].min()) * 0.1
+                                y_pos = []; txts = []
+                                for t in ordem_trats:
+                                    y_pos.append(df_proc[df_proc[col_trat]==t][col_resp].max() + margin)
+                                    txts.append(df_final[df_final[col_trat]==t]['Grupo'].values[0])
+                                fig_viz.add_trace(go.Scatter(
+                                    x=ordem_trats, y=y_pos, text=txts, mode='text',
+                                    textposition='top center', showlegend=False,
+                                    textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
+                                ))
+
+                            # ESTILO
                             show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
                             mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                             
@@ -2393,7 +2430,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if cfg['mostrar_subgrade']:
                                 fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5))
 
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v7_{col_resp}_{i}")
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v8_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
