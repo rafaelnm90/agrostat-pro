@@ -1188,6 +1188,7 @@ def log_message(mensagem):
     if EXIBIR_LOGS:
         print(mensagem)
 
+# Configuração da Página (Ícone e Título da Aba do Navegador)
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
 # --- FUNÇÃO CSS PARA ESTILOS GERAIS E CORREÇÕES ---
@@ -1250,8 +1251,7 @@ def configurar_estilo_abas():
 
 configurar_estilo_abas()
 
-# ALTERAÇÃO: Título removido daqui para não duplicar no Sorteio. 
-# Ele foi movido para o Bloco 13 (condicional).
+# ⚠️ NOTA: Removido st.title() daqui para não duplicar no modo Sorteio.
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
@@ -2216,7 +2216,8 @@ import pandas as pd
 import itertools
 
 if modo_app == "🎲 Sorteio Experimental":
-    st.title("🎲 Planejamento Experimental Pro")
+    # CORREÇÃO: Nome atualizado conforme solicitado
+    st.title("🎲 Sorteio Experimental")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
     # --- INPUTS DE ESTRUTURA ---
