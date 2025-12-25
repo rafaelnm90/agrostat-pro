@@ -1188,7 +1188,7 @@ def log_message(mensagem):
     if EXIBIR_LOGS:
         print(mensagem)
 
-# Configuração da Página (Ícone e Título da Aba do Navegador)
+# Configura apenas o título da ABA do navegador, não o texto da página
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
 # --- FUNÇÃO CSS PARA ESTILOS GERAIS E CORREÇÕES ---
@@ -1213,13 +1213,10 @@ def configurar_estilo_abas():
             }
             
             /* 2. Customização do Uploader (Botão LARGURA TOTAL) */
-            /* Afeta o container interno (retângulo preto) */
             [data-testid="stFileUploader"] section {
-                padding: 1rem !important; /* Garante respiro */
-                align-items: stretch !important; /* Força itens a esticar */
+                padding: 1rem !important;
+                align-items: stretch !important;
             }
-            
-            /* Força o botão interno a ocupar 100% da largura disponível */
             [data-testid="stFileUploader"] button {
                 width: 100% !important;
                 max-width: 100% !important;
@@ -1227,8 +1224,6 @@ def configurar_estilo_abas():
                 margin-left: 0 !important;
                 margin-right: 0 !important;
             }
-            
-            /* Garante que o texto 'Drag and drop' continue centralizado */
             [data-testid="stFileUploader"] section > div:first-child {
                 text-align: center !important;
                 margin-bottom: 10px !important;
@@ -1251,7 +1246,7 @@ def configurar_estilo_abas():
 
 configurar_estilo_abas()
 
-# ⚠️ NOTA: Removido st.title() daqui para não duplicar no modo Sorteio.
+# ⚠️ REMOVIDO: st.title("🌱 AgroStat Pro: Análises Estatísticas") foi deletado daqui!
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
@@ -1264,14 +1259,13 @@ configurar_estilo_abas()
 st.sidebar.markdown("# 🌾 AgroStat Pro") 
 
 # --- MENU PRINCIPAL ---
-# Define qual "parte" do aplicativo será exibida
 modo_app = st.sidebar.radio(
     "Navegação:",
     ("📊 Análise Estatística", "🎲 Sorteio Experimental"),
     index=0
 )
 
-# ALTERAÇÃO: Título exibido APENAS se estiver no modo Análise
+# ALTERAÇÃO: O título aparece APENAS se estivermos neste modo
 if modo_app == "📊 Análise Estatística":
     st.title("🌱 AgroStat Pro: Análises Estatísticas")
 
@@ -1281,7 +1275,7 @@ st.sidebar.markdown("---")
 # LÓGICA CONDICIONAL DA SIDEBAR
 # ==============================================================================
 
-# --- MODO 1: ANÁLISE ESTATÍSTICA (O que já existia) ---
+# --- MODO 1: ANÁLISE ESTATÍSTICA ---
 if modo_app == "📊 Análise Estatística":
     st.sidebar.header("📂 Configuração de Análise")
 
@@ -1320,7 +1314,6 @@ if modo_app == "📊 Análise Estatística":
         
         cols_trats = st.sidebar.multiselect("Fatores/Tratamentos (Selecione 1 ou mais)", colunas, on_change=reset_analise)
         
-        # --- Rótulo mais rígido ---
         OPCAO_PADRAO = "Local Único (Análise Individual)" 
         col_local = st.sidebar.selectbox("Coluna de Local/Ambiente", [OPCAO_PADRAO] + [c for c in colunas if c not in cols_trats], on_change=reset_analise)
         
@@ -1331,7 +1324,6 @@ if modo_app == "📊 Análise Estatística":
             col_bloco = st.sidebar.selectbox("Blocos (Repetições)", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
             cols_ocupadas.append(col_bloco)
         else:
-            # --- Remoção do (Automático) e (Opcional) ---
             col_rep_dic = st.sidebar.selectbox("Coluna de Repetição", [c for c in colunas if c not in cols_ocupadas], on_change=reset_analise)
             cols_ocupadas.append(col_rep_dic)
 
@@ -1348,11 +1340,9 @@ if modo_app == "📊 Análise Estatística":
         
         st.sidebar.markdown("---")
 
-        # --- BOTÃO DE AÇÃO (CENTRALIZADO/EXPANDIDO) ---
         if st.sidebar.button("🚀 Rodar Dados!", type="primary", use_container_width=True):
             st.session_state['processando'] = True
 
-        # --- EDITOR DE RÓTULOS (MOVIDO PARA BAIXO) ---
         mapa_renomeacao = {} 
         cols_para_editar = [c for c in cols_trats]
         if col_local != OPCAO_PADRAO:
@@ -1385,10 +1375,9 @@ if modo_app == "📊 Análise Estatística":
                 st.session_state['processando'] = False
                 st.rerun()
 
-# --- MODO 2: PLANEJAMENTO (Novo) ---
+# --- MODO 2: SORTEIO (Novo) ---
 elif modo_app == "🎲 Sorteio Experimental":
-    st.sidebar.info("🛠️ Você está no modo de Pré-Experimento. Configure os tratamentos e sorteie o croqui na tela principal.")
-    # Reseta o estado de processamento da análise para não misturar as coisas
+    st.sidebar.info("🛠️ Você está no modo de Sorteio. Configure os tratamentos e gere o croqui na tela principal.")
     st.session_state['processando'] = False 
 # ==============================================================================
 # 🏁 FIM DO BLOCO 13
@@ -2216,7 +2205,7 @@ import pandas as pd
 import itertools
 
 if modo_app == "🎲 Sorteio Experimental":
-    # CORREÇÃO: Nome atualizado conforme solicitado
+    # CORREÇÃO: Título atualizado para "Sorteio Experimental"
     st.title("🎲 Sorteio Experimental")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
@@ -2224,7 +2213,6 @@ if modo_app == "🎲 Sorteio Experimental":
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("#### ⚙️ Design")
-        # O estado desta variável define o que aparece abaixo
         tipo_exp = st.selectbox("Delineamento", ["DIC (Inteiramente Casualizado)", "DBC (Blocos Casualizados)"])
     with c2:
         st.markdown("#### 🔢 Repetições")
@@ -2235,33 +2223,30 @@ if modo_app == "🎲 Sorteio Experimental":
 
     st.markdown("---")
     
-    # --- LÓGICA DE NUMERAÇÃO AVANÇADA (CONDICIONAL AO TIPO DE EXPERIMENTO) ---
+    # --- LÓGICA DE NUMERAÇÃO AVANÇADA ---
     st.markdown("#### 🏷️ Configuração de Numeração")
     
-    # Inicializa variáveis com valores padrão para evitar erros
     usar_salto = False
     salto_val = 100
     
     if "DBC" in tipo_exp:
-        # Se for DBC, mostra a estrutura completa com Checkbox
         c_num1, c_num2 = st.columns([1, 2])
-        
         with c_num1:
             usar_salto = st.checkbox("Saltar numeração por Bloco?", value=False, help="Ex: Bloco 1 (101..), Bloco 2 (201..)")
-            
+        
         with c_num2:
             if usar_salto:
-                # DBC com Salto (Ordem: Início | Salto)
+                # DBC com Salto
                 col_s1, col_s2 = st.columns(2)
                 with col_s1: 
                     num_inicial = st.number_input("Início (1º Bloco)", value=101, step=1, help="Número da primeira parcela do Bloco 1.")
                 with col_s2: 
                     salto_val = st.number_input("Salto (Entre Blocos)", value=100, step=100, help="Quanto soma ao passar de um bloco para outro.")
             else:
-                # DBC Sem Salto (Sequencial)
+                # DBC Sem Salto
                 num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
     else:
-        # Se for DIC, NÃO existe salto entre blocos (interface simplificada)
+        # DIC (Sem salto)
         usar_salto = False 
         num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
 
@@ -2270,7 +2255,6 @@ if modo_app == "🎲 Sorteio Experimental":
     # --- SELETOR DE MODO ---
     tipo_entrada = st.radio("Como definir os tratamentos?", ["📝 Lista Simples", "✖️ Esquema Fatorial (A x B ...)"], horizontal=True)
     
-    # --- FORMULÁRIO APENAS PARA DADOS ---
     with st.form("form_dados_trats"):
         lista_trats_final = []
         
@@ -2292,9 +2276,7 @@ if modo_app == "🎲 Sorteio Experimental":
         st.markdown("---")
         submitted = st.form_submit_button("🎲 Gerar Sorteio Oficial")
 
-    # --- PROCESSAMENTO PÓS-SUBMIT ---
     if submitted:
-        # 1. Processa Listas
         if tipo_entrada == "📝 Lista Simples":
              if txt_trats:
                 lista_trats_final = [t.strip() for t in txt_trats.split('\n') if t.strip()]
@@ -2311,7 +2293,6 @@ if modo_app == "🎲 Sorteio Experimental":
         if not lista_trats_final:
             st.error("⚠️ Nenhum tratamento definido.")
         else:
-            # Sorteio
             parcelas = []
             info_blocos = []
             info_reps = [] 
@@ -2331,25 +2312,19 @@ if modo_app == "🎲 Sorteio Experimental":
                     parcelas.extend(bloco)
                     info_blocos.extend([f"Bloco {i+1}"] * len(bloco))
             
-            # --- GERAÇÃO DE IDs ---
             total_sorteadas = len(parcelas)
             ids_personalizados = []
             
             if usar_salto:
-                # Lógica exclusiva para DBC com Checkbox ativado
                 n_trats_por_bloco = len(lista_trats_final)
                 for i in range(total_sorteadas):
                     bloco_idx = i // n_trats_por_bloco 
                     item_idx = (i % n_trats_por_bloco) + 1 
-                    
-                    # Fórmula de Salto
                     novo_id = num_inicial + (bloco_idx * salto_val) + (item_idx - 1)
                     ids_personalizados.append(novo_id)
             else:
-                # Lógica Sequencial (DIC ou DBC sem salto)
                 ids_personalizados = list(range(num_inicial, num_inicial + total_sorteadas))
             
-            # --- MONTAGEM DO DATAFRAME ---
             dados_planilha = {"ID_Parcela": ids_personalizados}
             
             if "DBC" in tipo_exp:
