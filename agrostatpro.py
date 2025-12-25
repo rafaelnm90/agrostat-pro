@@ -2487,11 +2487,13 @@ elif modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Gerador de Relatório Executivo (Data Storytelling)
+# 📂 BLOCO 21: Gerador de Relatório Executivo (Correção de Erro NameError)
 # ==============================================================================
 # Adicione este bloco LOGO APÓS o Bloco 20 (ou no final do script)
 
-if analise_valida and modo_app != "🏠 Início":
+# A CORREÇÃO ESTÁ NESTA LINHA ABAIXO:
+if 'analise_valida' in locals() and analise_valida and modo_app != "🏠 Início":
+    
     st.markdown("---")
     st.header("📑 Relatório Executivo (Laudo Automático)")
     
