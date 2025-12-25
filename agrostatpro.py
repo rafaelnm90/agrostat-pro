@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Correção Visual)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Visualização Corrigida)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2280,133 +2280,183 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.metric("P-valor", f"{p_np:.4f}", "Não Significativo (Iguais)", delta_color="inverse")
                                     eh_significativo = False
                             
-                            # 2. TABELA DE RESULTADOS (DUNN)
-                            st.markdown("#### 🏆 Ranking de Medianas")
-                            
-                            # Prepara dados básicos
+                            # 2. PREPARAÇÃO DOS DADOS (TABELA E ORDENAÇÃO)
                             df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
                             df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude')
                             df_final = pd.merge(df_meds, df_iqr, on=col_trat)
                             
-                            # Se significativo, calcula letras
                             if eh_significativo:
                                 df_dunn = calcular_posthoc_dunn(df_proc, col_trat, col_resp)
                                 trats_np = sorted(df_proc[col_trat].unique())
                                 letras_dunn = gerar_letras_dunn(trats_np, df_dunn)
                                 df_final['Grupo'] = df_final[col_trat].map(letras_dunn)
                             else:
-                                df_final['Grupo'] = "a" # Todos iguais
+                                df_final['Grupo'] = "a" 
                                 
+                            # ORDENAÇÃO OBRIGATÓRIA: Maior Mediana -> Menor Mediana
                             df_final = df_final.sort_values('Mediana', ascending=False)
+                            ordem_trats = df_final[col_trat].tolist() # Lista ordenada para forçar o gráfico
+                            
+                            st.markdown("#### 🏆 Ranking de Medianas")
                             st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
                             
-                            if eh_significativo:
-                                st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Teste de Dunn, P>0.05).")
-                            else:
-                                st.caption("Não houve diferença estatística. Todos pertencem ao mesmo grupo.")
+                            if eh_significativo: st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Teste de Dunn, P>0.05).")
+                            else: st.caption("Não houve diferença estatística.")
 
                             st.markdown("---")
 
-                            # 3. VISUALIZAÇÃO COM EDITOR
+                            # 3. VISUALIZAÇÃO (AGORA COM ESTILO TOTAL)
                             st.markdown("#### 📉 Visualização dos Dados")
                             tipo_grafico = st.selectbox(
                                 "Estilo do Gráfico:",
-                                ["📊 Barras + Erro (Recomendado)", "📦 Boxplot", "🎻 Violin Plot"],
+                                ["📊 Barras + Erro (Híbrido)", "📦 Boxplot (Tradicional)", "🎻 Violin Plot (Densidade)"],
                                 key=f"sel_graf_np_{col_resp_original}"
                             )
                             
-                            # Chama o Editor Gráfico (para pegar as cores)
-                            lista_trats_graf = sorted(df_proc[col_trat].unique())
-                            cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=False, grupos_sk=lista_trats_graf)
+                            # Chama Editor (Usar cor única True para forçar uniformidade se desejar)
+                            cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=True)
                             
                             import plotly.graph_objects as go
                             fig_viz = go.Figure()
                             
-                            # Lógica de Plotagem
+                            # Configurações de Borda (Lógica manual para garantir funcionamento)
+                            show_line = True
+                            mirror_bool = False
+                            if cfg['estilo_borda'] == "Caixa (Espelhado)": mirror_bool = True
+                            elif cfg['estilo_borda'] == "Sem Bordas": show_line = False
+                            
+                            cor_principal = cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E'
+
+                            # --- PLOTAGEM ---
                             if "Barras" in tipo_grafico:
-                                # Recalcula erros para plotar
+                                # Calcula erro assimétrico para a barra
                                 df_min = df_proc.groupby(col_trat)[col_resp].min()
                                 df_max = df_proc.groupby(col_trat)[col_resp].max()
-                                # Garante alinhamento com df_final que já está ordenado
                                 erros_sup = []
                                 erros_inf = []
-                                cores_barras = []
                                 
-                                for idx, row in df_final.iterrows():
-                                    t = row[col_trat]
-                                    m = row['Mediana']
+                                for t in ordem_trats: # Usa a ordem correta
+                                    m = df_final[df_final[col_trat]==t]['Mediana'].values[0]
                                     erros_sup.append(df_max[t] - m)
                                     erros_inf.append(m - df_min[t])
-                                    # Pega a cor do editor ou usa padrão
-                                    if cfg['cores_map'] and t in cfg['cores_map']:
-                                        cores_barras.append(cfg['cores_map'][t])
-                                    else:
-                                        cores_barras.append(cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E')
 
                                 fig_viz.add_trace(go.Bar(
                                     x=df_final[col_trat], 
                                     y=df_final['Mediana'],
-                                    text=df_final['Grupo'], # AS LETRAS AQUI!
-                                    textposition='outside', # Força letra fora
+                                    text=df_final['Grupo'],
+                                    textposition='outside',
+                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto']), # Cor do texto das letras
                                     name='Mediana', 
-                                    marker_color=cores_barras,
-                                    error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color='black', thickness=1.5, width=5)
+                                    marker_color=cor_principal,
+                                    error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cfg['cor_texto'], thickness=1.5, width=5)
                                 ))
-                                # Adiciona pontos (scatter)
+                                # Pontos (Dados Reais)
                                 fig_viz.add_trace(go.Box(
                                     x=df_proc[col_trat], y=df_proc[col_resp],
                                     name='Dados', boxpoints='all', jitter=0.5, pointpos=0,
                                     fillcolor='rgba(0,0,0,0)', line=dict(color='rgba(0,0,0,0)'),
-                                    marker=dict(color='black', size=5, opacity=0.5),
+                                    marker=dict(color='black', size=5, opacity=0.4),
                                     showlegend=False, hoverinfo='y'
                                 ))
 
                             elif "Boxplot" in tipo_grafico:
-                                # Mapeia cores manualmente para o Boxplot
-                                for t in lista_trats_graf:
-                                    c = cfg['cores_map'].get(t, '#2E86C1')
-                                    df_t = df_proc[df_proc[col_trat] == t]
-                                    fig_viz.add_trace(go.Box(
-                                        x=df_t[col_trat], y=df_t[col_resp],
-                                        name=t, marker_color=c, boxpoints='all', jitter=0.3
-                                    ))
-                                # Adiciona anotação de texto via Scatter
+                                fig_viz.add_trace(go.Box(
+                                    x=df_proc[col_trat], y=df_proc[col_resp],
+                                    name="Dados", 
+                                    marker_color=cor_principal, 
+                                    boxpoints='all', jitter=0.3, pointpos=0,
+                                    line=dict(color=cfg['cor_texto'], width=1.5), # Linha do box segue cor do texto/eixo
+                                    fillcolor=cor_principal
+                                ))
+                                # Adiciona Letras (Calcula posição Y segura: Max + 5% do range)
+                                y_max_val = df_proc[col_resp].max()
+                                y_min_val = df_proc[col_resp].min()
+                                margin = (y_max_val - y_min_val) * 0.1
+                                
+                                # Cria listas alinhadas com a ordem
+                                y_pos_text = []
+                                text_vals = []
+                                for t in ordem_trats:
+                                    local_max = df_proc[df_proc[col_trat]==t][col_resp].max()
+                                    grupo_letra = df_final[df_final[col_trat]==t]['Grupo'].values[0]
+                                    y_pos_text.append(local_max + margin)
+                                    text_vals.append(grupo_letra)
+
                                 fig_viz.add_trace(go.Scatter(
-                                    x=df_final[col_trat], y=df_final['Mediana'],
-                                    text=df_final['Grupo'], mode='text',
+                                    x=ordem_trats, y=y_pos_text,
+                                    text=text_vals, mode='text',
                                     textposition='top center', showlegend=False,
-                                    textfont=dict(size=14, color='black')
+                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto'])
                                 ))
 
                             elif "Violin" in tipo_grafico:
-                                for t in lista_trats_graf:
-                                    c = cfg['cores_map'].get(t, '#2E86C1')
-                                    df_t = df_proc[df_proc[col_trat] == t]
-                                    fig_viz.add_trace(go.Violin(
-                                        x=df_t[col_trat], y=df_t[col_resp],
-                                        name=t, line_color=c, box_visible=True, points='all'
-                                    ))
+                                fig_viz.add_trace(go.Violin(
+                                    x=df_proc[col_trat], y=df_proc[col_resp],
+                                    name="Dados",
+                                    line_color=cor_principal, 
+                                    box_visible=True, points='all',
+                                    fillcolor=cor_principal, opacity=0.6
+                                ))
+                                # Letras (mesma lógica do boxplot)
+                                y_max_val = df_proc[col_resp].max()
+                                y_min_val = df_proc[col_resp].min()
+                                margin = (y_max_val - y_min_val) * 0.1
+                                y_pos_text = []
+                                text_vals = []
+                                for t in ordem_trats:
+                                    local_max = df_proc[df_proc[col_trat]==t][col_resp].max()
+                                    grupo_letra = df_final[df_final[col_trat]==t]['Grupo'].values[0]
+                                    y_pos_text.append(local_max + margin)
+                                    text_vals.append(grupo_letra)
+
                                 fig_viz.add_trace(go.Scatter(
-                                    x=df_final[col_trat], y=df_final['Mediana'],
-                                    text=df_final['Grupo'], mode='text',
+                                    x=ordem_trats, y=y_pos_text,
+                                    text=text_vals, mode='text',
                                     textposition='top center', showlegend=False,
-                                    textfont=dict(size=14, color='black')
+                                    textfont=dict(size=cfg['font_size'], color=cfg['cor_texto'])
                                 ))
 
-                            # APLICAÇÃO MANUAL DE ESTILO (SEGURA) - CORREÇÃO DO ERRO
-                            # Ao invés de chamar a função global, aplicamos apenas o layout aqui
+                            # --- APLICAÇÃO SEGURA DE ESTILO (LAYOUT COMPLETO) ---
                             fig_viz.update_layout(
                                 title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cfg['cor_texto'])),
                                 paper_bgcolor=cfg['cor_fundo'],
                                 plot_bgcolor=cfg['cor_fundo'],
                                 height=cfg['altura'],
                                 font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cfg['cor_texto']),
-                                yaxis=dict(title=cfg['label_y'], showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade']),
-                                xaxis=dict(title=cfg['label_x'], showgrid=False),
-                                showlegend=False
+                                showlegend=False,
+                                # EIXO Y
+                                yaxis=dict(
+                                    title=dict(text=cfg['label_y'], font=dict(color=cfg['cor_texto'])),
+                                    showgrid=cfg['mostrar_grid'], 
+                                    gridcolor=cfg['cor_grade'],
+                                    showline=show_line, 
+                                    linewidth=1, 
+                                    linecolor=cfg['cor_texto'], # Cor da linha do eixo
+                                    mirror=mirror_bool,
+                                    tickfont=dict(color=cfg['cor_texto'], size=cfg['font_size']), # Cor dos números
+                                    zeroline=False
+                                ),
+                                # EIXO X (COM ORDENAÇÃO FORÇADA)
+                                xaxis=dict(
+                                    title=dict(text=cfg['label_x'], font=dict(color=cfg['cor_texto'])),
+                                    showgrid=False,
+                                    showline=show_line, 
+                                    linewidth=1, 
+                                    linecolor=cfg['cor_texto'], # Cor da linha do eixo
+                                    mirror=mirror_bool,
+                                    tickfont=dict(color=cfg['cor_texto'], size=cfg['font_size']), # Cor dos nomes
+                                    categoryorder='array', 
+                                    categoryarray=ordem_trats # <--- AQUI A MÁGICA DA ORDEM
+                                )
                             )
                             
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v4_{col_resp}_{i}")
+                            # Sub-grades (Minor Grids) se ativado
+                            if cfg['mostrar_subgrade']:
+                                mapa_dash = {"Pontilhado": "dot", "Tracejado": "dash", "Sólido": "solid"}
+                                estilo_grid = mapa_dash.get(cfg['estilo_subgrade'], 'dot')
+                                fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5, griddash=estilo_grid))
+
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v5_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
