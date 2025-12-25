@@ -2205,7 +2205,6 @@ import pandas as pd
 import itertools
 
 if modo_app == "🎲 Sorteio Experimental":
-    # CORREÇÃO: Título atualizado para "Sorteio Experimental"
     st.title("🎲 Sorteio Experimental")
     st.markdown("Gere sua planilha de campo com numeração personalizada e identificação do ensaio.")
 
@@ -2223,6 +2222,31 @@ if modo_app == "🎲 Sorteio Experimental":
 
     st.markdown("---")
     
+    # --- CONFIGURAÇÃO DE RÓTULOS (NOVA FUNCIONALIDADE) ---
+    st.markdown("#### 🎨 Personalização de Rótulos")
+    st.caption("Defina como os nomes aparecerão na planilha final.")
+    
+    c_rot1, c_rot2 = st.columns(2)
+    with c_rot1:
+        # Define o padrão sugerido baseado no delineamento
+        padrao_prefixo = "Bloco " if "DBC" in tipo_exp else ""
+        label_desc = "Blocos" if "DBC" in tipo_exp else "Repetições"
+        
+        prefixo_grupo = st.text_input(
+            f"Prefixo para {label_desc}", 
+            value=padrao_prefixo, 
+            help="Ex: 'Bloco ' gera 'Bloco 1'. Deixe vazio para gerar apenas números (1, 2, 3)."
+        )
+    
+    with c_rot2:
+        prefixo_id = st.text_input(
+            "Prefixo para ID da Parcela (Opcional)", 
+            value="", 
+            help="Ex: Digite 'P-' para gerar IDs como 'P-101', 'P-102'. Útil para etiquetas."
+        )
+
+    st.markdown("---")
+    
     # --- LÓGICA DE NUMERAÇÃO AVANÇADA ---
     st.markdown("#### 🏷️ Configuração de Numeração")
     
@@ -2236,19 +2260,16 @@ if modo_app == "🎲 Sorteio Experimental":
         
         with c_num2:
             if usar_salto:
-                # DBC com Salto
                 col_s1, col_s2 = st.columns(2)
                 with col_s1: 
-                    num_inicial = st.number_input("Início (1º Bloco)", value=101, step=1, help="Número da primeira parcela do Bloco 1.")
+                    num_inicial = st.number_input("Início (1º Bloco)", value=101, step=1)
                 with col_s2: 
-                    salto_val = st.number_input("Salto (Entre Blocos)", value=100, step=100, help="Quanto soma ao passar de um bloco para outro.")
+                    salto_val = st.number_input("Salto (Entre Blocos)", value=100, step=100)
             else:
-                # DBC Sem Salto
-                num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
+                num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0)
     else:
-        # DIC (Sem salto)
         usar_salto = False 
-        num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0, help="Numeração contínua: 1, 2, 3, 4...")
+        num_inicial = st.number_input("Nº Inicial Sequencial", value=1, min_value=0)
 
     st.markdown("---")
     
@@ -2277,6 +2298,7 @@ if modo_app == "🎲 Sorteio Experimental":
         submitted = st.form_submit_button("🎲 Gerar Sorteio Oficial")
 
     if submitted:
+        # Processamento dos Tratamentos
         if tipo_entrada == "📝 Lista Simples":
              if txt_trats:
                 lista_trats_final = [t.strip() for t in txt_trats.split('\n') if t.strip()]
@@ -2297,6 +2319,7 @@ if modo_app == "🎲 Sorteio Experimental":
             info_blocos = []
             info_reps = [] 
             
+            # Sorteio e Geração de Rótulos Personalizados
             if "DIC" in tipo_exp:
                 base_trats = lista_trats_final * n_reps
                 random.shuffle(base_trats)
@@ -2304,14 +2327,17 @@ if modo_app == "🎲 Sorteio Experimental":
                 contadores = {t: 0 for t in lista_trats_final}
                 for t in parcelas:
                     contadores[t] += 1
-                    info_reps.append(contadores[t])
+                    # APLICAÇÃO DO PREFIXO PERSONALIZADO (DIC)
+                    info_reps.append(f"{prefixo_grupo}{contadores[t]}")
             else: # DBC
                 for i in range(n_reps):
                     bloco = lista_trats_final.copy()
                     random.shuffle(bloco) 
                     parcelas.extend(bloco)
-                    info_blocos.extend([f"Bloco {i+1}"] * len(bloco))
+                    # APLICAÇÃO DO PREFIXO PERSONALIZADO (DBC)
+                    info_blocos.extend([f"{prefixo_grupo}{i+1}"] * len(bloco))
             
+            # Geração de IDs
             total_sorteadas = len(parcelas)
             ids_personalizados = []
             
@@ -2320,11 +2346,14 @@ if modo_app == "🎲 Sorteio Experimental":
                 for i in range(total_sorteadas):
                     bloco_idx = i // n_trats_por_bloco 
                     item_idx = (i % n_trats_por_bloco) + 1 
-                    novo_id = num_inicial + (bloco_idx * salto_val) + (item_idx - 1)
-                    ids_personalizados.append(novo_id)
+                    val_num = num_inicial + (bloco_idx * salto_val) + (item_idx - 1)
+                    ids_personalizados.append(f"{prefixo_id}{val_num}")
             else:
-                ids_personalizados = list(range(num_inicial, num_inicial + total_sorteadas))
+                for i in range(total_sorteadas):
+                    val_num = num_inicial + i
+                    ids_personalizados.append(f"{prefixo_id}{val_num}")
             
+            # Montagem do DataFrame
             dados_planilha = {"ID_Parcela": ids_personalizados}
             
             if "DBC" in tipo_exp:
