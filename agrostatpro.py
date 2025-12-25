@@ -711,145 +711,121 @@ def analisar_regressao_polinomial(df, col_trat, col_resp):
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn - Correção Native)
+# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn Otimizado)
 # ==============================================================================
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     """
     Executa Kruskal-Wallis (DIC) ou Friedman (DBC).
-    Retorna: nome_teste, estatistica, p_valor
     """
     import scipy.stats as stats
     
-    grupos = []
-    # Garante ordem para consistência
     trats = sorted(df[col_trat].unique())
     
     try:
         if delineamento == "DIC":
-            # Prepara grupos para Kruskal-Wallis
-            for t in trats:
-                grupos.append(df[df[col_trat] == t][col_resp].values)
+            grupos = [df[df[col_trat] == t][col_resp].values for t in trats]
             stat, p_val = stats.kruskal(*grupos)
             nome_teste = "Kruskal-Wallis"
             
         else: # DBC
-            # Prepara matriz para Friedman (Tratamentos x Blocos)
             df_pivot = df.pivot(index=col_bloco, columns=col_trat, values=col_resp).dropna()
-            
-            if df_pivot.empty:
-                return "Erro (Dados Incompletos)", 0, 1.0
-            
+            if df_pivot.empty: return "Erro (Dados Incompletos)", 0, 1.0
             args = [df_pivot[col].values for col in df_pivot.columns]
             stat, p_val = stats.friedmanchisquare(*args)
             nome_teste = "Friedman"
             
         return nome_teste, stat, p_val
 
-    except Exception as e:
-        # if 'EXIBIR_LOGS' in globals() and EXIBIR_LOGS: print(f"Erro NP: {e}")
+    except Exception:
         return "Erro de Cálculo", 0, 1.0
 
-def calcular_posthoc_dunn(df, col_trat, col_resp, p_adj_method='bonferroni'):
+def calcular_posthoc_dunn(df, col_trat, col_resp):
     """
-    Implementação Manual Robusta do Teste de Dunn (Comparação Múltipla).
-    Baseado em Ranks (Postos).
+    Teste de Dunn com correção de HOLM-BONFERRONI (Mais poderoso que Bonferroni simples).
     """
     import scipy.stats as stats
     from itertools import combinations
     
-    # 1. Rankeamento Global
     df_rank = df.copy()
     df_rank['posto'] = df[col_resp].rank()
     
     trats = sorted(df[col_trat].unique())
-    n_trats = len(trats)
     
-    # Médias dos Postos e Tamanhos
     R_means = df_rank.groupby(col_trat)['posto'].mean()
     ns = df_rank.groupby(col_trat)['posto'].count()
-    
     N = len(df)
     
-    resultados = []
-    
-    # Comparações Par a Par
+    # 1. Calcula P-valores brutos
+    comparacoes = []
     for t1, t2 in combinations(trats, 2):
         n1, n2 = ns[t1], ns[t2]
         r1, r2 = R_means[t1], R_means[t2]
         
         # Erro Padrão
         se = np.sqrt( (N * (N + 1) / 12) * (1/n1 + 1/n2) )
-        
-        # Estatística Z
         z_val = abs(r1 - r2) / se
+        p_raw = 2 * (1 - stats.norm.cdf(z_val))
         
-        # P-valor (Two-tailed)
-        p_val = 2 * (1 - stats.norm.cdf(z_val))
+        comparacoes.append({'A': t1, 'B': t2, 'p_raw': p_raw})
         
-        resultados.append({'A': t1, 'B': t2, 'p': p_val})
-        
-    df_res = pd.DataFrame(resultados)
+    df_res = pd.DataFrame(comparacoes)
     
-    # Ajuste de P-valor (Bonferroni simples: P * num_comparacoes)
-    m = len(resultados)
-    if p_adj_method == 'bonferroni':
-        df_res['p_adj'] = df_res['p'] * m
-        df_res['p_adj'] = df_res['p_adj'].apply(lambda x: min(x, 1.0)) # Teto em 1
-    else:
-        df_res['p_adj'] = df_res['p'] # Sem ajuste (não recomendado)
+    # 2. Aplica Correção de HOLM (Step-Down)
+    # Ordena do menor P para o maior
+    df_res = df_res.sort_values('p_raw')
+    m = len(df_res)
+    
+    # P_adj = P_raw * (m - rank + 1)
+    df_res['p_adj'] = 1.0 # Inicializa
+    
+    for idx, row in enumerate(df_res.itertuples()):
+        # Holm formula: p * (m - i)
+        rank = idx + 1
+        fator = m - rank + 1
+        p_corrigido = row.p_raw * fator
+        
+        # Garante monotonicidade (o p_adj não pode ser menor que o anterior)
+        if idx > 0:
+            p_corrigido = max(p_corrigido, df_res.iloc[idx-1]['p_adj'])
+            
+        # Teto em 1.0
+        df_res.at[row.Index, 'p_adj'] = min(p_corrigido, 1.0)
         
     return df_res
 
 def gerar_letras_dunn(trats, df_comparacoes):
     """
-    Algoritmo de Atribuição de Letras (Nativo - Sem Dependências Externas).
-    Substitui a necessidade do NetworkX.
+    Algoritmo de Atribuição de Letras (Nativo).
     """
-    # 1. Mapear quem é igual a quem (Adjacência)
-    iguais = {t: {t} for t in trats} # Todo mundo é igual a si mesmo
+    # Mapeia quem é igual a quem (p_adj > 0.05)
+    iguais = {t: {t} for t in trats}
     
     for _, row in df_comparacoes.iterrows():
-        if row['p_adj'] > 0.05: # Não difere estatisticamente
+        if row['p_adj'] > 0.05: 
             iguais[row['A']].add(row['B'])
             iguais[row['B']].add(row['A'])
             
-    # 2. Algoritmo de Varredura para Cliques Maximais (Simplificado)
-    # A lógica é: Criar grupos onde todos os membros são iguais entre si.
-    
+    # Algoritmo de Varredura (Greedy Clique Cover)
     cliques = []
-    # Ordena tratamentos por número de conexões (heurística para cobrir maiores grupos primeiro)
+    # Ordena por conectividade (quem é igual a mais gente é processado antes)
     trats_ordenados = sorted(trats, key=lambda x: len(iguais[x]), reverse=True)
     
-    restantes = set(trats)
-    
-    # Tentativa de cobrir todas as conexões
-    # Nota: Este é um problema NP-Hard, estamos usando uma aproximação gulosa suficiente para agronomia
-    
-    # Vamos gerar grupos válidos baseados nas conexões
-    # Um "clique" é um conjunto onde todo mundo é igual a todo mundo dentro dele
-    
-    # Gera candidatos a grupos
     candidatos = []
-    for t in trats:
-        # O conjunto de iguais a 't' é um candidato inicial
+    for t in trats_ordenados:
         grupo_base = iguais[t]
-        # Mas dentro desse grupo, todos devem ser iguais entre si.
-        # Vamos podar o grupo_base para garantir consistência
         clique_valido = {t}
+        # Valida se todos no grupo são iguais entre si
         for candidato in grupo_base:
             if candidato == t: continue
-            # Para entrar no clique, tem que ser igual a todos que JÁ estão lá
             if all(candidato in iguais[membro] for membro in clique_valido):
                 clique_valido.add(candidato)
         
-        # Adiciona se não for subconjunto de um já existente
         if clique_valido not in candidatos:
             candidatos.append(clique_valido)
 
-    # Filtra apenas os cliques maximais (remove subconjuntos)
-    cliques_finais = []
+    # Remove subconjuntos
     candidatos.sort(key=len, reverse=True)
-    
+    cliques_finais = []
     for c in candidatos:
         eh_subconjunto = False
         for aceito in cliques_finais:
@@ -859,20 +835,15 @@ def gerar_letras_dunn(trats, df_comparacoes):
         if not eh_subconjunto:
             cliques_finais.append(c)
 
-    # 3. Atribui letras aos cliques
+    # Atribui letras
     letras_map = {t: "" for t in trats}
-    chars = "abcdefghijklmnopqrstuvwxyz"
-    
-    # Ordena os cliques para que a letra 'a' fique (tentativamente) nas maiores médias
-    # (A ordenação final visual será feita na tabela, aqui garantimos a letra)
-    # Como não temos as médias aqui dentro, usamos a ordem de entrada 'trats' como proxy se ela vier ordenada
     
     for i, clique in enumerate(cliques_finais):
-        letra_atual = get_letra_segura(i)
+        letra = get_letra_segura(i)
         for t in clique:
-            letras_map[t] += letra_atual
+            letras_map[t] += letra
             
-    # Ordena as letras de cada tratamento (ex: "ba" vira "ab")
+    # Ordena string da letra
     for t in letras_map:
         letras_map[t] = "".join(sorted(letras_map[t]))
         
