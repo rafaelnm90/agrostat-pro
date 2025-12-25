@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico Avançado (Com Seletor Visual)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Completo)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2235,10 +2235,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 else:
                     st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO: ANOVA INVÁLIDA")
                     st.markdown("""
-                    **Motivo:** Seus dados violaram os pressupostos de Normalidade/Homogeneidade.
-                    A Média Aritmética não é confiável aqui. **A "régua" mudou: Agora quem manda é a Mediana.**
+                    **Motivo:** Seus dados violaram os pressupostos. A Média Aritmética não é confiável.
+                    **Solução:** Usaremos a **Mediana** e testes baseados em postos (Ranks).
                     """)
                     
+                    # --- BOTÕES DE TRANSFORMAÇÃO ---
                     if transf_atual == "Nenhuma":
                         c1, c2 = st.columns([1, 4])
                         with c1:
@@ -2266,13 +2267,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             if st.button("🛡️ Rodar Análise Não-Paramétrica (Correto)", key=f"btn_run_np_{col_resp_original}", type="primary"):
                                 st.session_state[key_np] = True; st.rerun()
                         else:
-                            # --- CÁLCULO NÃO PARAMÉTRICO COMPLETO ---
+                            # 1. CÁLCULO ESTATÍSTICO
                             nome_np, stat_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
                             
-                            st.markdown(f"#### 1. Teste de Hipótese ({nome_np})")
                             c_res1, c_res2 = st.columns([1, 3])
-                            with c_res1:
-                                st.metric("Estatística", f"{stat_np:.2f}")
+                            with c_res1: st.metric(f"Teste: {nome_np}", f"{stat_np:.2f}")
                             with c_res2:
                                 if p_np < 0.05:
                                     st.metric("P-valor", f"{p_np:.4f}", "Significativo (Existe Diferença)", delta_color="normal")
@@ -2281,108 +2280,121 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.metric("P-valor", f"{p_np:.4f}", "Não Significativo (Iguais)", delta_color="inverse")
                                     eh_significativo = False
                             
-                            # --- 2. PÓS-ANÁLISE (O QUE FAZER AGORA?) ---
-                            st.markdown("#### 2. Interpretação e Decisão")
+                            # 2. TABELA DE RESULTADOS (DUNN)
+                            st.markdown("#### 🏆 Ranking de Medianas")
                             
-                            if not eh_significativo:
-                                st.info(f"""
-                                ✅ **Conclusão:** Não há evidências estatísticas para dizer que os tratamentos são diferentes (P > 0.05).
-                                **O que reportar:** "Pelo teste de {nome_np}, não houve diferença significativa entre os grupos (p={p_np:.4f})."
-                                """)
-                                # Tabela Simples (Sem Letras)
-                                df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
-                                df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.1f} – {x.max():.1f}").reset_index(name='Amplitude (Min-Max)')
-                                df_final = pd.merge(df_meds, df_iqr, on=col_trat)
-                                st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
-                                
-                            else:
-                                st.success(f"""
-                                🚨 **Diferença Detectada!** Como P < 0.05, precisamos descobrir QUEM difere de QUEM.
-                                **Método:** Teste de Comparações Múltiplas de **Dunn** (com correção de Bonferroni).
-                                """)
-                                
-                                # --- 3. TESTE DE DUNN (MOTOR) ---
+                            # Prepara dados básicos
+                            df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
+                            df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude')
+                            df_final = pd.merge(df_meds, df_iqr, on=col_trat)
+                            
+                            # Se significativo, calcula letras
+                            if eh_significativo:
                                 df_dunn = calcular_posthoc_dunn(df_proc, col_trat, col_resp)
                                 trats_np = sorted(df_proc[col_trat].unique())
                                 letras_dunn = gerar_letras_dunn(trats_np, df_dunn)
-                                
-                                # --- 4. TABELA FINAL (MEDIANA + LETRAS) ---
-                                df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
-                                df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude (Min - Max)')
-                                
-                                df_final = pd.merge(df_meds, df_iqr, on=col_trat)
                                 df_final['Grupo'] = df_final[col_trat].map(letras_dunn)
+                            else:
+                                df_final['Grupo'] = "a" # Todos iguais
                                 
-                                # Reordena por Mediana (Maior para Menor)
-                                df_final = df_final.sort_values('Mediana', ascending=False)
-                                
-                                st.markdown("##### 🏆 Tabela de Resultados (Padrão Científico)")
-                                st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
-                                st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Dunn, P>0.05).")
-                                
-                                # --- 5. TEXTO AUTOMÁTICO (COLA) ---
-                                st.markdown("##### 📝 Texto Sugerido para seu Relatório")
-                                
-                                melhor_trat = df_final.iloc[0][col_trat]
-                                val_melhor = df_final.iloc[0]['Mediana']
-                                pior_trat = df_final.iloc[-1][col_trat]
-                                val_pior = df_final.iloc[-1]['Mediana']
-                                
-                                texto_exemplo = f"""
-                                "Como os dados não atenderam aos pressupostos de normalidade, optou-se pelo teste não paramétrico de {nome_np}.
-                                Houve diferença estatística significativa entre os tratamentos (p = {p_np:.4f}). 
-                                A comparação múltipla pelo método de Dunn revelou que o tratamento **{melhor_trat}** obteve a maior mediana ({val_melhor:.2f}), 
-                                diferindo (ou não, ver letras) do tratamento **{pior_trat}** ({val_pior:.2f})."
-                                """
-                                st.code(texto_exemplo, language="text")
-                                
-                                # --- 6. SELETOR DE GRÁFICOS (VOCÊ ESCOLHE) ---
-                                st.markdown("##### 📉 Visualização dos Dados")
-                                tipo_grafico = st.selectbox(
-                                    "Escolha o Estilo do Gráfico:",
-                                    ["📦 Boxplot (Tradicional)", "🎻 Violin Plot (Densidade)", "📊 Barras + Erro (Híbrido)"],
-                                    key=f"sel_graf_np_{col_resp_original}"
-                                )
-                                
-                                import plotly.graph_objects as go
-                                
-                                if "Boxplot" in tipo_grafico:
-                                    # BOXPLOT PURO (COM PONTOS)
-                                    fig_viz = px.box(df_proc, x=col_trat, y=col_resp, points="all", color=col_trat, title=f"Boxplot: {col_resp}")
-                                    fig_viz.update_layout(showlegend=False)
-                                    
-                                elif "Violin" in tipo_grafico:
-                                    # VIOLIN PLOT (SEXY)
-                                    fig_viz = px.violin(df_proc, x=col_trat, y=col_resp, box=True, points="all", color=col_trat, title=f"Violin Plot: {col_resp}")
-                                    fig_viz.update_layout(showlegend=False)
-                                    
-                                else:
-                                    # HÍBRIDO (BARRAS + PONTOS)
-                                    df_meds_plot = df_proc.groupby(col_trat)[col_resp].median().reset_index()
-                                    df_min = df_proc.groupby(col_trat)[col_resp].min().reset_index()
-                                    df_max = df_proc.groupby(col_trat)[col_resp].max().reset_index()
-                                    
-                                    df_meds_plot['err_plus'] = df_max[col_resp] - df_meds_plot[col_resp]
-                                    df_meds_plot['err_minus'] = df_meds_plot[col_resp] - df_min[col_resp]
-                                    
-                                    fig_viz = go.Figure()
-                                    # Barra
-                                    fig_viz.add_trace(go.Bar(
-                                        x=df_meds_plot[col_trat], y=df_meds_plot[col_resp],
-                                        name='Mediana', marker_color='#5D6D7E', opacity=0.6,
-                                        error_y=dict(type='data', symmetric=False, array=df_meds_plot['err_plus'], arrayminus=df_meds_plot['err_minus'], visible=True, color='black', thickness=1.5, width=5)
-                                    ))
-                                    # Pontos
-                                    fig_viz.add_trace(go.Box(
-                                        x=df_proc[col_trat], y=df_proc[col_resp],
-                                        name='Dados', boxpoints='all', jitter=0.5, pointpos=0,
-                                        fillcolor='rgba(0,0,0,0)', line=dict(color='rgba(0,0,0,0)'),
-                                        marker=dict(color='#2E86C1', size=8, opacity=0.9, line=dict(width=1, color='white')),
-                                        showlegend=False, hoverinfo='y'
-                                    ))
-                                    fig_viz.update_layout(title=f"Mediana + Amplitude: {col_resp}", showlegend=False, plot_bgcolor='white', yaxis=dict(showgrid=True, gridcolor='#f0f0f0'))
+                            df_final = df_final.sort_values('Mediana', ascending=False)
+                            st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
+                            
+                            if eh_significativo:
+                                st.caption("Médias seguidas pela mesma letra não diferem estatisticamente (Teste de Dunn, P>0.05).")
+                            else:
+                                st.caption("Não houve diferença estatística. Todos pertencem ao mesmo grupo.")
 
-                                st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_np_{col_resp}_{i}")
+                            st.markdown("---")
+
+                            # 3. VISUALIZAÇÃO COM EDITOR
+                            st.markdown("#### 📉 Visualização dos Dados")
+                            tipo_grafico = st.selectbox(
+                                "Estilo do Gráfico:",
+                                ["📊 Barras + Erro (Recomendado)", "📦 Boxplot", "🎻 Violin Plot"],
+                                key=f"sel_graf_np_{col_resp_original}"
+                            )
+                            
+                            # Chama o Editor Gráfico (O mesmo do Tukey)
+                            # Passamos a lista de grupos para permitir cores personalizadas por tratamento
+                            lista_trats_graf = sorted(df_proc[col_trat].unique())
+                            cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=False, grupos_sk=lista_trats_graf)
+                            
+                            import plotly.graph_objects as go
+                            fig_viz = go.Figure()
+                            
+                            # Lógica de Plotagem
+                            if "Barras" in tipo_grafico:
+                                # Recalcula erros para plotar
+                                df_min = df_proc.groupby(col_trat)[col_resp].min()
+                                df_max = df_proc.groupby(col_trat)[col_resp].max()
+                                # Garante alinhamento com df_final que já está ordenado
+                                erros_sup = []
+                                erros_inf = []
+                                cores_barras = []
+                                
+                                for idx, row in df_final.iterrows():
+                                    t = row[col_trat]
+                                    m = row['Mediana']
+                                    erros_sup.append(df_max[t] - m)
+                                    erros_inf.append(m - df_min[t])
+                                    # Pega a cor do editor ou usa padrão
+                                    if cfg['cores_map'] and t in cfg['cores_map']:
+                                        cores_barras.append(cfg['cores_map'][t])
+                                    else:
+                                        cores_barras.append(cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E')
+
+                                fig_viz.add_trace(go.Bar(
+                                    x=df_final[col_trat], 
+                                    y=df_final['Mediana'],
+                                    text=df_final['Grupo'], # AS LETRAS AQUI!
+                                    name='Mediana', 
+                                    marker_color=cores_barras,
+                                    error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color='black', thickness=1.5, width=5)
+                                ))
+                                # Adiciona pontos (scatter)
+                                fig_viz.add_trace(go.Box(
+                                    x=df_proc[col_trat], y=df_proc[col_resp],
+                                    name='Dados', boxpoints='all', jitter=0.5, pointpos=0,
+                                    fillcolor='rgba(0,0,0,0)', line=dict(color='rgba(0,0,0,0)'),
+                                    marker=dict(color='black', size=5, opacity=0.5),
+                                    showlegend=False, hoverinfo='y'
+                                ))
+
+                            elif "Boxplot" in tipo_grafico:
+                                # Mapeia cores manualmente para o Boxplot
+                                for t in lista_trats_graf:
+                                    c = cfg['cores_map'].get(t, '#2E86C1')
+                                    df_t = df_proc[df_proc[col_trat] == t]
+                                    fig_viz.add_trace(go.Box(
+                                        x=df_t[col_trat], y=df_t[col_resp],
+                                        name=t, marker_color=c, boxpoints='all', jitter=0.3
+                                    ))
+                                # Adiciona anotação de texto (gambiarra visual para boxplot)
+                                # Boxplot nativo do plotly não aceita 'text' fácil por grupo, então usamos Scatter invisível
+                                fig_viz.add_trace(go.Scatter(
+                                    x=df_final[col_trat], y=df_final['Mediana'],
+                                    text=df_final['Grupo'], mode='text',
+                                    textposition='top center', showlegend=False
+                                ))
+
+                            elif "Violin" in tipo_grafico:
+                                for t in lista_trats_graf:
+                                    c = cfg['cores_map'].get(t, '#2E86C1')
+                                    df_t = df_proc[df_proc[col_trat] == t]
+                                    fig_viz.add_trace(go.Violin(
+                                        x=df_t[col_trat], y=df_t[col_resp],
+                                        name=t, line_color=c, box_visible=True, points='all'
+                                    ))
+                                fig_viz.add_trace(go.Scatter(
+                                    x=df_final[col_trat], y=df_final['Mediana'],
+                                    text=df_final['Grupo'], mode='text',
+                                    textposition='top center', showlegend=False
+                                ))
+
+                            # Aplica Estilos do Editor
+                            fig_viz = estilizar_grafico_avancado(fig_viz, cfg, df_proc[col_resp].max())
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v3_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
