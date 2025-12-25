@@ -2223,7 +2223,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Bordas Corrigidas)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Ticks Físicos vs Rótulos)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2337,7 +2337,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             cor_principal = cfg['cor_barras'] if cfg['cor_barras'] else '#5D6D7E'
                             cor_texto_eixos = cfg['cor_texto']
-                            cor_borda_eixos = 'black' # <--- FIXO (PRETO) PARA NÃO MUDAR COM O TEXTO
+                            cor_borda_eixos = 'black'
 
                             # --- RENDERIZAÇÃO DOS ESTILOS ---
                             
@@ -2437,10 +2437,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
 
-                            # ESTILO
+                            # ESTILO (CORRIGIDO: showticklabels=True sempre)
                             show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
                             mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
-                            mostrar_ticks = cfg.get('mostrar_ticks', True)
+                            mostrar_ticks_fisicos = cfg.get('mostrar_ticks', True)
 
                             fig_viz.update_layout(
                                 title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cor_texto_eixos)),
@@ -2450,28 +2450,28 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     title=dict(text=cfg['label_y'], font=dict(color=cor_texto_eixos)), 
                                     showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade'], 
                                     showline=show_line, linewidth=1, 
-                                    linecolor=cor_borda_eixos, # <--- FIXADO EM PRETO
+                                    linecolor=cor_borda_eixos,
                                     mirror=mirror_bool, 
                                     tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']),
-                                    showticklabels=mostrar_ticks,
-                                    ticks='outside' if mostrar_ticks else ''
+                                    showticklabels=True, # <--- NÚMEROS SEMPRE VISÍVEIS
+                                    ticks='outside' if mostrar_ticks_fisicos else '' # <--- SÓ O TRAÇO SOME
                                 ),
                                 xaxis=dict(
                                     title=dict(text=cfg['label_x'], font=dict(color=cor_texto_eixos)), 
                                     showgrid=False, 
                                     showline=show_line, linewidth=1, 
-                                    linecolor=cor_borda_eixos, # <--- FIXADO EM PRETO
+                                    linecolor=cor_borda_eixos,
                                     mirror=mirror_bool, 
                                     tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), 
                                     categoryorder='array', categoryarray=ordem_trats,
-                                    showticklabels=mostrar_ticks,
-                                    ticks='outside' if mostrar_ticks else ''
+                                    showticklabels=True, # <--- NOMES SEMPRE VISÍVEIS
+                                    ticks='outside' if mostrar_ticks_fisicos else '' # <--- SÓ O TRAÇO SOME
                                 )
                             )
                             if cfg['mostrar_subgrade']:
                                 fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5))
 
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v11_{col_resp}_{i}")
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v12_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
