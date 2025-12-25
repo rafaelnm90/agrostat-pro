@@ -711,7 +711,7 @@ def analisar_regressao_polinomial(df, col_trat, col_resp):
 
 
 # ==============================================================================
-# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn Otimizado)
+# 📂 BLOCO 09: Motores Estatísticos (Não-Paramétricos & Dunn com Correção de Empates)
 # ==============================================================================
 def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=None):
     """
@@ -741,62 +741,96 @@ def calcular_nao_parametrico(df, col_trat, col_resp, delineamento, col_bloco=Non
 
 def calcular_posthoc_dunn(df, col_trat, col_resp):
     """
-    Teste de Dunn com correção de HOLM-BONFERRONI (Mais poderoso que Bonferroni simples).
+    Teste de Dunn OTIMIZADO:
+    1. Usa correção de Empates (Tie Correction) - Crucial para dados repetidos.
+    2. Usa ajuste de HOLM-BONFERRONI (Mais poderoso).
     """
     import scipy.stats as stats
     from itertools import combinations
     
     df_rank = df.copy()
-    df_rank['posto'] = df[col_resp].rank()
+    # Calcula ranks globais (com média para empates)
+    df_rank['posto'] = df[col_resp].rank(method='average')
     
     trats = sorted(df[col_trat].unique())
     
+    # Estatísticas dos Postos
     R_means = df_rank.groupby(col_trat)['posto'].mean()
     ns = df_rank.groupby(col_trat)['posto'].count()
     N = len(df)
+    
+    # --- CÁLCULO DO FATOR DE CORREÇÃO DE EMPATES (TIE CORRECTION) ---
+    # Fórmula: 1 - (Sum(t^3 - t) / (N^3 - N))
+    from collections import Counter
+    valores = df[col_resp].values
+    counts = Counter(valores)
+    
+    # Soma de (t^3 - t) para todos os grupos de empates
+    T_sum = sum([cnt**3 - cnt for cnt in counts.values() if cnt > 1])
+    
+    if T_sum == 0:
+        tie_correction = 1.0
+    else:
+        tie_correction = 1 - (T_sum / (N**3 - N))
+    
+    # Se tie_correction for 0 (impossível teoricamente se N>1, mas previne div/0)
+    if tie_correction == 0: tie_correction = 1.0
+        
+    # Variância corrigida
+    var_base = (N * (N + 1)) / 12.0
     
     # 1. Calcula P-valores brutos
     comparacoes = []
     for t1, t2 in combinations(trats, 2):
         n1, n2 = ns[t1], ns[t2]
         r1, r2 = R_means[t1], R_means[t2]
+        diff = abs(r1 - r2)
         
-        # Erro Padrão
-        se = np.sqrt( (N * (N + 1) / 12) * (1/n1 + 1/n2) )
-        z_val = abs(r1 - r2) / se
-        p_raw = 2 * (1 - stats.norm.cdf(z_val))
+        # Erro Padrão COM correção de empates
+        # SE = sqrt( (N(N+1)/12 - T_fator) * (1/n1 + 1/n2) ) -> Aproximação robusta
+        # Fórmula exata Dunn com ties:
+        # Sigma = sqrt( ( (N(N+1)/12) - (Sum(t^3-t)/(12(N-1))) ) * (1/n1 + 1/n2) )
+        
+        term_ties = T_sum / (12.0 * (N - 1))
+        var_corrected = (N * (N + 1) / 12.0) - term_ties
+        
+        se = np.sqrt( var_corrected * (1/n1 + 1/n2) )
+        
+        if se == 0: 
+            z_val = 0
+            p_raw = 1.0
+        else:
+            z_val = diff / se
+            p_raw = 2 * (1 - stats.norm.cdf(z_val)) # Two-tailed
         
         comparacoes.append({'A': t1, 'B': t2, 'p_raw': p_raw})
         
     df_res = pd.DataFrame(comparacoes)
+    if df_res.empty: return df_res
     
     # 2. Aplica Correção de HOLM (Step-Down)
-    # Ordena do menor P para o maior
     df_res = df_res.sort_values('p_raw')
     m = len(df_res)
-    
-    # P_adj = P_raw * (m - rank + 1)
-    df_res['p_adj'] = 1.0 # Inicializa
+    df_res['p_adj'] = 1.0
     
     for idx, row in enumerate(df_res.itertuples()):
-        # Holm formula: p * (m - i)
         rank = idx + 1
         fator = m - rank + 1
         p_corrigido = row.p_raw * fator
         
-        # Garante monotonicidade (o p_adj não pode ser menor que o anterior)
         if idx > 0:
             p_corrigido = max(p_corrigido, df_res.iloc[idx-1]['p_adj'])
             
-        # Teto em 1.0
         df_res.at[row.Index, 'p_adj'] = min(p_corrigido, 1.0)
         
     return df_res
 
 def gerar_letras_dunn(trats, df_comparacoes):
     """
-    Algoritmo de Atribuição de Letras (Nativo).
+    Algoritmo de Atribuição de Letras (Grafo de Conectividade).
     """
+    if df_comparacoes.empty: return {t: "a" for t in trats}
+
     # Mapeia quem é igual a quem (p_adj > 0.05)
     iguais = {t: {t} for t in trats}
     
@@ -805,45 +839,39 @@ def gerar_letras_dunn(trats, df_comparacoes):
             iguais[row['A']].add(row['B'])
             iguais[row['B']].add(row['A'])
             
-    # Algoritmo de Varredura (Greedy Clique Cover)
-    cliques = []
-    # Ordena por conectividade (quem é igual a mais gente é processado antes)
+    # Algoritmo Greedy Clique Cover
     trats_ordenados = sorted(trats, key=lambda x: len(iguais[x]), reverse=True)
     
     candidatos = []
     for t in trats_ordenados:
-        grupo_base = iguais[t]
-        clique_valido = {t}
-        # Valida se todos no grupo são iguais entre si
-        for candidato in grupo_base:
-            if candidato == t: continue
-            if all(candidato in iguais[membro] for membro in clique_valido):
-                clique_valido.add(candidato)
-        
-        if clique_valido not in candidatos:
-            candidatos.append(clique_valido)
+        clique = {t}
+        grupo = iguais[t]
+        # Tenta expandir o clique
+        for cand in grupo:
+            if cand == t: continue
+            # Só entra se for amigo de todos que já estão no clique
+            if all(cand in iguais[membro] for membro in clique):
+                clique.add(cand)
+        if clique not in candidatos:
+            candidatos.append(clique)
 
-    # Remove subconjuntos
+    # Limpa subconjuntos (ex: se tenho {A,B,C}, removo {A,B})
     candidatos.sort(key=len, reverse=True)
     cliques_finais = []
     for c in candidatos:
-        eh_subconjunto = False
+        eh_sub = False
         for aceito in cliques_finais:
             if c.issubset(aceito):
-                eh_subconjunto = True
-                break
-        if not eh_subconjunto:
-            cliques_finais.append(c)
+                eh_sub = True; break
+        if not eh_sub: cliques_finais.append(c)
 
     # Atribui letras
     letras_map = {t: "" for t in trats}
-    
     for i, clique in enumerate(cliques_finais):
-        letra = get_letra_segura(i)
-        for t in clique:
-            letras_map[t] += letra
+        l = get_letra_segura(i)
+        for t in clique: letras_map[t] += l
             
-    # Ordena string da letra
+    # Ordena as letras
     for t in letras_map:
         letras_map[t] = "".join(sorted(letras_map[t]))
         
