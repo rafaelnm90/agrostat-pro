@@ -104,23 +104,10 @@ def formatar_tabela_anova(anova_df):
         
     new_index = []
     for idx in df.index:
-        # Converte para string
         nome = str(idx)
-        
-        # LIMPEZA PROFUNDA (Remove artefatos do Patsy/Statsmodels)
-        # Remove 'C(' do início
-        nome = nome.replace('C(', '')
-        # Remove ', Sum)' que apareceu por causa da correção estatística
-        nome = nome.replace(', Sum)', '')
-        # Remove qualquer parêntese solto restante
-        nome = nome.replace(')', '')
-        
-        # Formatação Visual
+        nome = nome.replace('C(', '').replace(', Sum)', '').replace(')', '')
         nome = nome.replace(':', ' x ')
-        
-        # Tradução
         if 'Residual' in nome: nome = 'Resíduo'
-        
         new_index.append(nome)
         
     df.index = new_index
@@ -129,15 +116,13 @@ def formatar_tabela_anova(anova_df):
         if pd.isna(p): return "" 
         if p < 0.001: return "***" 
         if p < 0.01: return "**"    
-        if p < 0.05: return "*"     
+        if p < 0.05: return "*"      
         return "ns"                  
     
     if 'P-valor' in df.columns:
         df['Sig.'] = df['P-valor'].apply(verificar_sig)
     
-    # --- CORREÇÃO: REORDENAÇÃO DAS COLUNAS (GL PRIMEIRO) ---
     ordem_desejada = ['GL', 'SQ', 'QM', 'Fcalc', 'P-valor', 'Sig.']
-    # Filtra apenas as colunas que existem no dataframe para evitar erro
     cols_finais = [c for c in ordem_desejada if c in df.columns]
     df = df[cols_finais]
     
@@ -153,6 +138,68 @@ def classificar_cv(cv):
     elif cv < 20: return "🟡 Médio (Boa Precisão)"
     elif cv < 30: return "🟠 Alto (Baixa Precisão)"
     else: return "🔴 Muito Alto (Inadequado)"
+
+# --- NOVAS FUNÇÕES PARA TABELA DE MÉDIAS (PADRÃO ARTIGO) ---
+
+def mostrar_editor_tabela(key_prefix):
+    """Cria o menu para personalizar a tabela de médias."""
+    with st.expander("✏️ Personalizar Tabela (Rodapé e Dados)"):
+        c1, c2 = st.columns(2)
+        show_media = c1.checkbox("Exibir Média Geral", value=True, key=f"show_mean_{key_prefix}")
+        show_cv = c2.checkbox("Exibir CV (%)", value=True, key=f"show_cv_{key_prefix}")
+        return show_media, show_cv
+
+def preparar_tabela_publicacao(df_medias, media_geral, mse_resid, show_media, show_cv):
+    """
+    Formata a tabela de ranking para o padrão científico.
+    Adiciona linhas de Média Geral e CV ao final.
+    """
+    # 1. Cria cópia para formatação (tudo vira string/object para aceitar textos no rodapé)
+    df_final = df_medias.copy()
+    
+    # Formata a coluna de média numérica para string com 2 casas
+    if 'Media' in df_final.columns:
+        df_final['Media'] = df_final['Media'].apply(lambda x: f"{float(x):.2f}")
+    
+    # 2. Prepara as linhas de rodapé
+    rows_to_add = []
+    
+    if show_media:
+        rows_to_add.append({
+            'Tratamento': 'Média Geral', # Índice
+            'Media': f"{media_geral:.2f}",
+            'Grupos': '' # Vazio na coluna de letras
+        })
+        
+    if show_cv:
+        # Cálculo do CV: (Raiz(QMres) / Media Geral) * 100
+        cv_val = (np.sqrt(mse_resid) / media_geral) * 100
+        rows_to_add.append({
+            'Tratamento': 'CV (%)', # Índice
+            'Media': f"{cv_val:.2f}",
+            'Grupos': ''
+        })
+        
+    # 3. Adiciona as linhas ao DataFrame
+    if rows_to_add:
+        # Reseta o index para transformar os tratamentos em coluna normal
+        df_final = df_final.reset_index()
+        # Renomeia a coluna de índice antigo (que geralmente vem como 'index' ou nome do fator)
+        col_index_name = df_final.columns[0]
+        df_final = df_final.rename(columns={col_index_name: 'Tratamento'})
+        
+        # Cria DF dos rodapés
+        df_footer = pd.DataFrame(rows_to_add)
+        
+        # Concatena
+        df_export = pd.concat([df_final, df_footer], ignore_index=True)
+        
+        # Define 'Tratamento' como index novamente para exibição limpa no Streamlit
+        df_export = df_export.set_index('Tratamento')
+        
+        return df_export
+    else:
+        return df_final
 # ==============================================================================
 # 🏁 FIM DO BLOCO 03
 # ==============================================================================
@@ -1866,7 +1913,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 18: Visualização - Análise Individual
+# 📂 BLOCO 18: Visualização - Análise Individual (Tukey/Scott-Knott + Tabela Pro)
 # ==============================================================================
                 # ----------------------------------------------------------
                 # LÓGICA DE VISUALIZAÇÃO (SÓ RODA SE A ANÁLISE FOR VÁLIDA)
@@ -1893,6 +1940,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         idx_aba = 0
 
                         medias_ind = df_proc.groupby(col_trat)[col_resp].mean()
+                        media_geral_valor = df_proc[col_resp].mean() # Para o rodapé
                         reps_ind = df_proc.groupby(col_trat)[col_resp].count().mean()
                         n_trats_ind = len(medias_ind)
                         max_val_ind = medias_ind.max()
@@ -1924,7 +1972,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         y_pred = params['Intercept'] + params[col_trat]*x_range + params[f"I({col_trat} ** 2)"]*(x_range**2)
                                     else:
                                         y_pred = params['Intercept'] + params[col_trat]*x_range
-                                        
+                                    
                                     fig_reg = px.scatter(df_proc, x=col_trat, y=col_resp, title=f"Regressão: {col_resp}", opacity=0.6)
                                     fig_reg.add_scatter(x=x_range, y=y_pred, mode='lines', name=f'Ajuste {nome_modelo}')
                                     medias_df = medias_ind.reset_index()
@@ -1972,9 +2020,18 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         st.info("👇 **AÇÃO RECOMENDADA:** Role a página para baixo e analise a **Matriz de Desdobramento**.")
                                     else:
                                         st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
-                                    
+                                
                                 st.markdown("#### Ranking Geral (Tukey)")
-                                st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}))
+                                
+                                # EDITOR DE TABELA
+                                show_m_tk, show_cv_tk = mostrar_editor_tabela(f"tk_ind_{col_resp}_{i}")
+                                
+                                # FORMATAÇÃO PADRÃO ARTIGO
+                                df_tk_final = preparar_tabela_publicacao(df_tukey_ind, media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
+                                st.dataframe(df_tk_final, use_container_width=True)
+                                
+                                # RODAPÉ TÉCNICO
+                                st.caption(f"**Nota:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Tukey a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_tk else ''}")
                                 
                                 if interacao_sig:
                                     st.markdown("---")
@@ -2004,7 +2061,16 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         st.success("✅ **OK:** Interação Não Significativa. Pode confiar neste Ranking Geral.")
 
                                 st.markdown("#### Ranking Geral (Scott-Knott)")
-                                st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}))
+                                
+                                # EDITOR DE TABELA
+                                show_m_sk, show_cv_sk = mostrar_editor_tabela(f"sk_ind_{col_resp}_{i}")
+                                
+                                # FORMATAÇÃO PADRÃO ARTIGO
+                                df_sk_final = preparar_tabela_publicacao(df_sk_ind, media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
+                                st.dataframe(df_sk_final, use_container_width=True)
+                                
+                                # RODAPÉ TÉCNICO
+                                st.caption(f"**Nota:** Médias seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Scott-Knott a 5% de probabilidade. {'CV: Coeficiente de Variação.' if show_cv_sk else ''}")
                                 
                                 if interacao_sig:
                                     st.markdown("---")
