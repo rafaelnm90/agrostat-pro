@@ -2204,11 +2204,11 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Visualização e Captura Inteligente (DENTRO DO LOOP)
+# 📂 BLOCO 20: Visualização Final e Captura de Dados (DENTRO DO LOOP)
 # ==============================================================================
                 # --- LÓGICA DE VISUALIZAÇÃO E FALLBACK ---
-                grafico_final_obj = None # Variável para guardar o gráfico
-                tabela_final_obj = None # Variável para guardar a tabela de médias
+                grafico_final_obj = None 
+                tabela_final_obj = None
 
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2216,6 +2216,27 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         st.success(f"✅ **Transformação Eficaz!** Com **{transf_atual}**, os pressupostos foram atendidos.")
                         if st.button("Voltar ao Original", key=f"reset_success_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
+                    
+                    # Se for Paramétrica, geramos um gráfico padrão para o relatório (Tukey)
+                    # Isso garante que o relatório tenha gráfico mesmo se o usuário não clicou nas abas
+                    try:
+                        medias_rep = df_proc.groupby(col_trat)[col_resp].mean()
+                        reps_rep = df_proc.groupby(col_trat)[col_resp].count().mean()
+                        df_tk_rep = tukey_manual_preciso(medias_rep, res_model.mse_resid, res_model.df_resid, reps_rep, len(medias_rep))
+                        if 'Letras' in df_tk_rep.columns: df_tk_rep = df_tk_rep.rename(columns={'Letras': 'Grupos'})
+                        tabela_final_obj = df_tk_rep[['Media', 'Grupos']]
+                        
+                        import plotly.graph_objects as go
+                        fig_rep = go.Figure()
+                        fig_rep.add_trace(go.Bar(
+                            x=tabela_final_obj.index, y=tabela_final_obj['Media'],
+                            text=tabela_final_obj['Grupos'], textposition='outside',
+                            marker_color='#2E86C1'
+                        ))
+                        fig_rep.update_layout(title=f"Médias: {col_resp} (Tukey)", template="plotly_white")
+                        grafico_final_obj = fig_rep
+                    except: pass
+
                 else:
                     st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO: ANOVA INVÁLIDA")
                     st.markdown("**Solução:** Usaremos a **Mediana** e testes baseados em postos (Ranks).")
@@ -2231,15 +2252,16 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     elif transf_atual == "Raiz Quadrada (SQRT)":
                         st.warning("Transformações não resolveram.")
                         
-                        # --- ANÁLISE NÃO-PARAMÉTRICA ---
+                        # --- CÁLCULO NÃO-PARAMÉTRICO ---
                         nome_np, stat_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
+                        
                         c1, c2 = st.columns([1, 3])
                         with c1: st.metric(f"Teste: {nome_np}", f"{stat_np:.2f}")
                         with c2: 
-                            lbl_sig = "Significativo" if p_np < 0.05 else "Não Significativo"
-                            st.metric("P-valor", f"{p_np:.4f}", lbl_sig)
+                            sig_label = "Significativo" if p_np < 0.05 else "Não Significativo"
+                            st.metric("P-valor", f"{p_np:.4f}", sig_label, delta_color="normal" if p_np < 0.05 else "inverse")
                         
-                        # Tabela de Medianas
+                        # --- TABELA DE MEDIANAS ---
                         st.markdown("#### 🏆 Ranking de Medianas")
                         df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
                         df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude')
@@ -2254,13 +2276,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             df_final['Grupo'] = "a"
                             
                         df_final = df_final.sort_values('Mediana', ascending=False)
-                        tabela_final_obj = df_final # Salva para o relatório
                         ordem_trats = df_final[col_trat].tolist()
+                        tabela_final_obj = df_final # Guarda para o relatório
                         
                         st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
                         st.markdown("---")
 
-                        # Gráfico Não-Paramétrico
+                        # --- VISUALIZAÇÃO INTELIGENTE ---
                         st.markdown("#### 📉 Visualização")
                         min_reps = df_proc.groupby(col_trat)[col_resp].count().min()
                         tem_empates = (df_proc.groupby(col_trat)[col_resp].apply(lambda x: x.max() - x.min()) == 0).any()
@@ -2268,55 +2290,84 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         idx_padrao = 0
                         if min_reps < 5: idx_padrao = 2 if tem_empates else 1
                         
-                        opcoes = ["📦 Boxplot", "📍 Strip Plot", "🎯 Dot Plot", "📊 Barras", "🎻 Violin"]
+                        opcoes = ["📦 Boxplot (Tradicional)", "📍 Strip Plot (Pontos)", "🎯 Dot Plot (Mediana Única)", "📊 Barras + Erro", "🎻 Violin Plot"]
                         tipo_grafico = st.selectbox("Estilo:", opcoes, index=idx_padrao, key=f"sel_graf_np_{col_resp_original}")
+                        
                         cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=True)
                         
                         import plotly.graph_objects as go
                         fig_viz = go.Figure()
+                        
                         cor_princ = cfg['cor_barras'] or '#5D6D7E'
                         cor_txt = cfg['cor_texto']
-                        
-                        # (Plotagem Simplificada para o Bloco - lógica completa já foi feita antes)
-                        if "Dot" in tipo_grafico:
-                            fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers+text', marker=dict(size=18, color=cor_princ), text=df_final['Grupo'], textposition='top center', textfont=dict(color=cor_txt)))
+                        cor_borda = 'black'
+
+                        if "Dot Plot" in tipo_grafico:
+                            fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers+text', marker=dict(size=18, color=cor_princ, symbol='circle', line=dict(width=2, color='white')), text=df_final['Grupo'], textposition='top center', textfont=dict(size=cfg['font_size']+2, color=cor_txt), name='Mediana'))
+                            fig_viz.update_traces(showlegend=False)
                         elif "Barras" in tipo_grafico:
-                            fig_viz.add_trace(go.Bar(x=df_final[col_trat], y=df_final['Mediana'], text=df_final['Grupo'], marker_color=cor_princ, textposition='outside', textfont=dict(color=cor_txt)))
-                        else: # Box/Strip/Violin
-                            fig_viz.add_trace(go.Box(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", marker_color=cor_princ, line=dict(color='black')))
-                            # Adiciona letras
-                            y_pos = [df_proc[df_proc[col_trat]==t][col_resp].max() for t in ordem_trats]
-                            fig_viz.add_trace(go.Scatter(x=ordem_trats, y=y_pos, text=df_final['Grupo'], mode='text', textposition='top center', textfont=dict(color=cor_txt)))
+                            df_min = df_proc.groupby(col_trat)[col_resp].min(); df_max = df_proc.groupby(col_trat)[col_resp].max()
+                            erros_sup = []; erros_inf = []
+                            for t in ordem_trats:
+                                m = df_final[df_final[col_trat]==t]['Mediana'].values[0]
+                                erros_sup.append(df_max[t] - m); erros_inf.append(m - df_min[t])
+                            fig_viz.add_trace(go.Bar(x=df_final[col_trat], y=df_final['Mediana'], text=df_final['Grupo'], textposition='outside', textfont=dict(size=cfg['font_size'], color=cor_txt), marker_color=cor_princ, error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cor_txt, thickness=1.5, width=5)))
+                        elif "Boxplot" in tipo_grafico:
+                            fig_viz.add_trace(go.Box(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", marker_color=cor_princ, boxpoints='all', jitter=0.3, pointpos=0, line=dict(color=cor_borda, width=1.5), fillcolor=cor_princ))
+                            y_pos = []; txts = []; margin = (df_proc[col_resp].max() - df_proc[col_resp].min()) * 0.1
+                            for t in ordem_trats:
+                                y_pos.append(df_proc[df_proc[col_trat]==t][col_resp].max() + margin)
+                                txts.append(df_final[df_final[col_trat]==t]['Grupo'].values[0])
+                            fig_viz.add_trace(go.Scatter(x=ordem_trats, y=y_pos, text=txts, mode='text', textposition='top center', showlegend=False, textfont=dict(size=cfg['font_size'], color=cor_txt)))
+                        elif "Strip Plot" in tipo_grafico:
+                            fig_viz.add_trace(go.Box(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", boxpoints='all', jitter=0.3, pointpos=0, fillcolor='rgba(0,0,0,0)', line=dict(width=0), marker=dict(color=cor_princ, size=10, opacity=0.8, line=dict(width=1, color=cor_borda)), showlegend=False))
+                            fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers', marker=dict(symbol='line-ew', size=40, color=cor_txt, line=dict(width=3)), name='Mediana', hoverinfo='y'))
+                        elif "Violin" in tipo_grafico:
+                            fig_viz.add_trace(go.Violin(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", line_color=cor_princ, box_visible=True, points='all', fillcolor=cor_princ, opacity=0.6))
 
                         # Layout
-                        fig_viz.update_layout(
-                            title=dict(text=cfg['titulo_custom'], font=dict(color=cor_txt, size=cfg['font_size']+4)),
-                            paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
-                            yaxis=dict(title=cfg['label_y'], showticklabels=True, color=cor_txt),
-                            xaxis=dict(title=cfg['label_x'], showticklabels=True, color=cor_txt)
-                        )
-                        st.plotly_chart(fig_viz, use_container_width=True)
-                        grafico_final_obj = fig_viz # Salva gráfico
+                        show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
+                        mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
+                        mostrar_ticks = cfg.get('mostrar_ticks', True)
 
-                        if st.button("Voltar ao Original", key=f"reset_sqrt_np_{col_resp_original}"):
+                        fig_viz.update_layout(
+                            title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cor_txt)),
+                            paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'], height=cfg['altura'],
+                            font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cor_txt), showlegend=False,
+                            yaxis=dict(title=cfg['label_y'], showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade'], showline=show_line, linewidth=1, linecolor=cor_borda, mirror=mirror_bool, tickfont=dict(color=cor_txt, size=cfg['font_size']), showticklabels=True, ticks='outside' if mostrar_ticks else ''),
+                            xaxis=dict(title=cfg['label_x'], showgrid=False, showline=show_line, linewidth=1, linecolor=cor_borda, mirror=mirror_bool, tickfont=dict(color=cor_txt, size=cfg['font_size']), categoryorder='array', categoryarray=ordem_trats, showticklabels=True, ticks='outside' if mostrar_ticks else '')
+                        )
+                        if cfg['mostrar_subgrade']: fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5))
+                        
+                        st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_np_final_{i}")
+                        grafico_final_obj = fig_viz # Salva para o relatório
+
+                        if st.button("Ocultar Resultado", key=f"hide_np_{col_resp_original}"):
+                            st.session_state[key_np] = False; st.rerun()
+
+                        if st.button("Voltar ao Original", key=f"reset_final_np_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
 
                 # --- CAPTURA DE DADOS PARA O RELATÓRIO (CRUCIAL) ---
                 if 'dados_para_relatorio_final' in locals():
-                    # Texto explicativo automático
-                    motivo = "Os dados atenderam aos pressupostos da ANOVA." if analise_valida else f"Os dados não atenderam aos pressupostos. Optou-se pela análise Não-Paramétrica com transformação {transf_atual}."
+                    p_shap_val = res_analysis.get('shapiro', (0,0))[1] if res_analysis else 0
+                    p_lev_val = res_analysis.get('levene', (0,0))[1] if res_analysis else 0
                     
+                    conclusao_txt = "Não houve diferença estatística."
+                    if 'p_final_trat' in locals() and p_final_trat < 0.05: conclusao_txt = "Diferença significativa detectada (ANOVA)."
+                    elif not analise_valida and 'p_np' in locals() and p_np < 0.05: conclusao_txt = "Diferença significativa detectada (Não-Paramétrica)."
+
                     dados_para_relatorio_final.append({
                         "var": col_resp,
                         "metodo": "ANOVA (Paramétrica)" if analise_valida else "Não-Paramétrica",
                         "transf": transf_atual,
-                        "p_valor": f"{p_final_trat:.4e}" if 'p_final_trat' in locals() else "N/A",
+                        "p_norm": p_shap_val,
+                        "p_homog": p_lev_val,
                         "cv": f"{cv_val:.2f}%" if 'cv_val' in locals() else "-",
-                        "conclusao": "Houve diferença significativa entre os tratamentos." if ('p_final_trat' in locals() and p_final_trat < 0.05) or (not analise_valida and 'p_np' in locals() and p_np < 0.05) else "Não houve diferença significativa.",
-                        "tabela_anova": anova_tab if 'anova_tab' in locals() else None,
+                        "conclusao": conclusao_txt,
                         "tabela_medias": tabela_final_obj,
                         "grafico": grafico_final_obj,
-                        "texto_motivo": motivo
+                        "data_hora": pd.Timestamp.now().strftime('%d/%m/%Y')
                     })
 # ==============================================================================
 # 🏁 FIM DO BLOCO 20
@@ -2326,98 +2377,84 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 📂 BLOCO 21: Gerador de Relatório Completo (HTML Download)
 # ==============================================================================
-# Este código roda FORA do loop das variáveis
-
-if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
-    st.markdown("---")
-    st.header("📑 Central de Relatórios")
-    st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
+    # ATENÇÃO: Esta parte fica FORA do loop (alinhada à esquerda do IF principal)
     
-    # Função para converter gráfico Plotly em HTML string
-    def fig_to_html(fig):
-        if fig:
-            return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='400px')
-        return "<div>Sem gráfico disponível.</div>"
+    if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
+        st.markdown("---")
+        st.header("📑 Central de Relatórios")
+        st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
+        st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
+        
+        def fig_to_html(fig):
+            if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
+            return "<div style='color:#999;'>Gráfico não gerado automaticamente (verifique abas).</div>"
 
-    # Função para converter DataFrame em HTML bonito
-    def df_to_html(df):
-        if df is not None:
-            return df.to_html(classes='table table-striped', float_format="%.2f")
-        return ""
+        def df_to_html(df):
+            if df is not None: return df.to_html(classes='table table-striped', float_format="%.2f", justify='center')
+            return "<div style='color:#999;'>Tabela não disponível.</div>"
 
-    # Gera o HTML Gigante
-    html_content = f"""
-    <html>
-    <head>
-        <title>Relatório AgroStat Pro</title>
-        <meta charset="utf-8">
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
-        <style>
-            body {{ font-family: sans-serif; padding: 40px; }}
-            h1 {{ color: #2E86C1; text-align: center; margin-bottom: 40px; }}
-            h2 {{ color: #28B463; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-top: 50px; }}
-            .card {{ margin-bottom: 20px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); padding: 20px; }}
-            .info-box {{ background-color: #f9f9f9; border-left: 6px solid #2196F3; padding: 10px; margin: 15px 0; }}
-            @media print {{ .no-print {{ display: none; }} }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🌱 AgroStat Pro - Relatório Completo</h1>
-            <p><strong>Data:</strong> {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}</p>
-            <button class="btn btn-primary no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
-            <hr>
-    """
-
-    for item in dados_para_relatorio_final:
-        html_content += f"""
-        <div class="card">
-            <h2>📊 Variável: {item['var']}</h2>
-            
-            <div class="row">
-                <div class="col-md-6">
-                    <h4>Resumo Estatístico</h4>
-                    <ul>
-                        <li><strong>Método:</strong> {item['metodo']}</li>
-                        <li><strong>Transformação:</strong> {item['transf']}</li>
-                        <li><strong>P-Valor:</strong> {item['p_valor']}</li>
-                        <li><strong>CV (%):</strong> {item['cv']}</li>
-                    </ul>
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Relatório AgroStat Pro</title>
+            <meta charset="utf-8">
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+            <style>
+                body {{ font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f4f4f4; }}
+                .container {{ background: white; padding: 40px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); }}
+                h1 {{ color: #2E86C1; text-align: center; margin-bottom: 10px; }}
+                .var-section {{ margin-bottom: 60px; border-bottom: 2px solid #eee; padding-bottom: 40px; }}
+                h2 {{ color: #28B463; border-left: 5px solid #28B463; padding-left: 15px; }}
+                .metric-box {{ background: #f8f9fa; border: 1px solid #ddd; padding: 15px; margin-top: 20px; }}
+                .table-container {{ margin-top: 20px; overflow-x: auto; }}
+                table {{ width: 100%; text-align: center; }}
+                th {{ background-color: #2E86C1; color: white; }}
+                @media print {{ .no-print {{ display: none; }} .var-section {{ page-break-inside: avoid; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="no-print" style="text-align:right; margin-bottom:20px;">
+                    <button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
                 </div>
-                <div class="col-md-6">
-                    <div class="info-box">
-                        <strong>Conclusão:</strong> {item['conclusao']}<br>
-                        <em>{item['texto_motivo']}</em>
+                <h1>🌱 AgroStat Pro - Relatório de Análise</h1>
+                <p style="text-align:center;">Data: {dados_para_relatorio_final[0]['data_hora']}</p>
+                <hr>
+        """
+
+        for item in dados_para_relatorio_final:
+            html_content += f"""
+            <div class="var-section">
+                <h2>Variável: {item['var']}</h2>
+                <div class="row metric-box">
+                    <div class="col-md-3"><strong>Método:</strong><br>{item['metodo']}</div>
+                    <div class="col-md-3"><strong>Transformação:</strong><br>{item['transf']}</div>
+                    <div class="col-md-3"><strong>Normalidade (P):</strong><br>{item['p_norm']:.4f}</div>
+                    <div class="col-md-3"><strong>CV (%):</strong><br>{item['cv']}</div>
+                </div>
+                <div class="alert alert-info" style="margin-top: 15px;"><strong>Conclusão:</strong> {item['conclusao']}</div>
+                <div class="row">
+                    <div class="col-md-5">
+                        <h5 style="margin-top:20px;">📋 Resultados</h5>
+                        <div class="table-container">{df_to_html(item['tabela_medias'])}</div>
+                    </div>
+                    <div class="col-md-7">
+                        <h5 style="margin-top:20px;">📊 Gráfico</h5>
+                        <div style="border:1px solid #eee; padding:10px;">{fig_to_html(item['grafico'])}</div>
                     </div>
                 </div>
             </div>
+            """
 
-            <h4>Tabela de Médias / Resultados</h4>
-            <div style="overflow-x:auto;">
-                {df_to_html(item['tabela_medias'])}
-            </div>
+        html_content += "</div></body></html>"
 
-            <h4>Gráfico</h4>
-            <div>
-                {fig_to_html(item['grafico'])}
-            </div>
-        </div>
-        """
-
-    html_content += """
-        </div>
-    </body>
-    </html>
-    """
-
-    # Botão de Download
-    st.download_button(
-        label="📥 Baixar Relatório Completo (HTML com Gráficos)",
-        data=html_content,
-        file_name="Relatorio_AgroStat.html",
-        mime="text/html",
-        help="Baixe o arquivo, abra no navegador e clique em Imprimir -> Salvar como PDF."
-    )
+        st.download_button(
+            label="📥 Baixar Relatório Completo (HTML com Gráficos)",
+            data=html_content,
+            file_name="Relatorio_AgroStat.html",
+            mime="text/html"
+        )
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
