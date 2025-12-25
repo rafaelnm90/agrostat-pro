@@ -2224,7 +2224,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Completo)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Correção Visual)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2315,8 +2315,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 key=f"sel_graf_np_{col_resp_original}"
                             )
                             
-                            # Chama o Editor Gráfico (O mesmo do Tukey)
-                            # Passamos a lista de grupos para permitir cores personalizadas por tratamento
+                            # Chama o Editor Gráfico (para pegar as cores)
                             lista_trats_graf = sorted(df_proc[col_trat].unique())
                             cfg = mostrar_editor_grafico(f"edit_np_{col_resp}_{i}", f"Medianas: {col_resp}", col_trat, col_resp, usar_cor_unica=False, grupos_sk=lista_trats_graf)
                             
@@ -2348,6 +2347,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     x=df_final[col_trat], 
                                     y=df_final['Mediana'],
                                     text=df_final['Grupo'], # AS LETRAS AQUI!
+                                    textposition='outside', # Força letra fora
                                     name='Mediana', 
                                     marker_color=cores_barras,
                                     error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color='black', thickness=1.5, width=5)
@@ -2370,12 +2370,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                         x=df_t[col_trat], y=df_t[col_resp],
                                         name=t, marker_color=c, boxpoints='all', jitter=0.3
                                     ))
-                                # Adiciona anotação de texto (gambiarra visual para boxplot)
-                                # Boxplot nativo do plotly não aceita 'text' fácil por grupo, então usamos Scatter invisível
+                                # Adiciona anotação de texto via Scatter
                                 fig_viz.add_trace(go.Scatter(
                                     x=df_final[col_trat], y=df_final['Mediana'],
                                     text=df_final['Grupo'], mode='text',
-                                    textposition='top center', showlegend=False
+                                    textposition='top center', showlegend=False,
+                                    textfont=dict(size=14, color='black')
                                 ))
 
                             elif "Violin" in tipo_grafico:
@@ -2389,12 +2389,24 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 fig_viz.add_trace(go.Scatter(
                                     x=df_final[col_trat], y=df_final['Mediana'],
                                     text=df_final['Grupo'], mode='text',
-                                    textposition='top center', showlegend=False
+                                    textposition='top center', showlegend=False,
+                                    textfont=dict(size=14, color='black')
                                 ))
 
-                            # Aplica Estilos do Editor
-                            fig_viz = estilizar_grafico_avancado(fig_viz, cfg, df_proc[col_resp].max())
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v3_{col_resp}_{i}")
+                            # APLICAÇÃO MANUAL DE ESTILO (SEGURA) - CORREÇÃO DO ERRO
+                            # Ao invés de chamar a função global, aplicamos apenas o layout aqui
+                            fig_viz.update_layout(
+                                title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cfg['cor_texto'])),
+                                paper_bgcolor=cfg['cor_fundo'],
+                                plot_bgcolor=cfg['cor_fundo'],
+                                height=cfg['altura'],
+                                font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cfg['cor_texto']),
+                                yaxis=dict(title=cfg['label_y'], showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade']),
+                                xaxis=dict(title=cfg['label_x'], showgrid=False),
+                                showlegend=False
+                            )
+                            
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v4_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
