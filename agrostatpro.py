@@ -1154,6 +1154,40 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
 # ==============================================================================
 # 📂 BLOCO 12: Interface - Setup e CSS
 # ==============================================================================
+import streamlit as st
+import pandas as pd
+import numpy as np
+import scipy.stats as stats
+from scipy.stats import studentized_range
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import plotly.express as px
+
+# --- CONFIGURAÇÃO DE LOGS ---
+EXIBIR_LOGS = True
+
+# --- INICIALIZAÇÃO DO ESTADO (MEMÓRIA) ---
+if 'transformacoes' not in st.session_state:
+    st.session_state['transformacoes'] = {} 
+if 'processando' not in st.session_state:
+    st.session_state['processando'] = False
+
+def get_transformacao_atual(col_nome):
+    return st.session_state['transformacoes'].get(col_nome, "Nenhuma")
+
+def set_transformacao(col_nome, tipo):
+    st.session_state['transformacoes'][col_nome] = tipo
+    key_np = f"show_np_{col_nome}"
+    if key_np in st.session_state:
+        st.session_state[key_np] = False
+
+def reset_analise():
+    st.session_state['processando'] = False
+
+def log_message(mensagem):
+    if EXIBIR_LOGS:
+        print(mensagem)
+
 st.set_page_config(page_title="AgroStat Pro", page_icon="🌱", layout="wide")
 
 # --- FUNÇÃO CSS PARA ESTILOS GERAIS E CORREÇÕES ---
@@ -1216,7 +1250,8 @@ def configurar_estilo_abas():
 
 configurar_estilo_abas()
 
-st.title("🌱 AgroStat Pro: Análises Estatísticas")
+# ALTERAÇÃO: Título removido daqui para não duplicar no Sorteio. 
+# Ele foi movido para o Bloco 13 (condicional).
 # ==============================================================================
 # 🏁 FIM DO BLOCO 12
 # ==============================================================================
@@ -1235,6 +1270,10 @@ modo_app = st.sidebar.radio(
     ("📊 Análise Estatística", "🎲 Sorteio Experimental"),
     index=0
 )
+
+# ALTERAÇÃO: Título exibido APENAS se estiver no modo Análise
+if modo_app == "📊 Análise Estatística":
+    st.title("🌱 AgroStat Pro: Análises Estatísticas")
 
 st.sidebar.markdown("---")
 
