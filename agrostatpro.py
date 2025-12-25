@@ -2249,7 +2249,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         st.warning(f"Log10 não resolveu.")
                         c1, c2 = st.columns([1, 4])
                         with c1:
-                            if st.button("🌱 Tentar SQRT", key=f"btn_sqrt_{col_resp_original}"):
+                            if st.button("🌱 Tentar Raiz Quadrada", key=f"btn_sqrt_{col_resp_original}"):
                                 set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)"); st.rerun()
                         if st.button("Voltar ao Original", key=f"reset_log_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
