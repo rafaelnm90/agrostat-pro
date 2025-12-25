@@ -2223,7 +2223,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Escolha Inteligente)
+# 📂 BLOCO 20: Lógica de Fallback e Relatório Não-Paramétrico (Ticks Corrigidos)
 # ==============================================================================
                 if analise_valida:
                     if transf_atual != "Nenhuma":
@@ -2305,7 +2305,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             
                             # --- ALGORITMO DE ESCOLHA DO GRÁFICO ---
                             min_reps = df_proc.groupby(col_trat)[col_resp].count().min()
-                            # Checa se há variação zero (muitos empates)
                             tem_empates_rigidos = False
                             amplitudes = df_proc.groupby(col_trat)[col_resp].apply(lambda x: x.max() - x.min())
                             if (amplitudes == 0).any(): tem_empates_rigidos = True
@@ -2318,13 +2317,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             msg_auto = ""
                             
                             if min_reps >= 5:
-                                idx_padrao = 0 # Boxplot (Cenário 1)
+                                idx_padrao = 0 
                             else:
                                 if tem_empates_rigidos:
-                                    idx_padrao = 2 # Dot Plot (Cenário 3 - Limpeza visual para empates)
+                                    idx_padrao = 2 
                                     msg_auto = f"💡 **Sugestão Automática:** Como você tem poucos dados (N={min_reps}) e valores repetidos, ativamos o **Dot Plot** para evitar poluição visual."
                                 else:
-                                    idx_padrao = 1 # Strip Plot (Cenário 2 - Honestidade na dispersão)
+                                    idx_padrao = 1 
                                     msg_auto = f"💡 **Sugestão Automática:** Para N={min_reps}, o **Strip Plot** é o mais indicado para mostrar a distribuição real."
 
                             if msg_auto: st.info(msg_auto)
@@ -2342,7 +2341,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             # --- RENDERIZAÇÃO DOS ESTILOS ---
                             
                             if "Dot Plot" in tipo_grafico:
-                                # ESTILO NOVO: Apenas o ponto da Mediana (Limpo e Elegante)
                                 fig_viz.add_trace(go.Scatter(
                                     x=df_final[col_trat], y=df_final['Mediana'],
                                     mode='markers+text',
@@ -2351,7 +2349,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textfont=dict(size=cfg['font_size']+2, color=cor_texto_eixos),
                                     name='Mediana'
                                 ))
-                                # Adiciona linha horizontal sutil para guiar o olho (opcional, estilo lollipop)
                                 fig_viz.update_traces(showlegend=False)
 
                             elif "Barras" in tipo_grafico:
@@ -2439,21 +2436,39 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     textfont=dict(size=cfg['font_size'], color=cor_texto_eixos)
                                 ))
 
-                            # ESTILO
+                            # ESTILO (CORRIGIDO: Conexão dos Ticks)
                             show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
                             mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
-                            
+                            mostrar_ticks = cfg.get('mostrar_ticks', True) # Pega estado do checkbox
+
                             fig_viz.update_layout(
                                 title=dict(text=f"<b>{cfg['titulo_custom']}</b>", x=0.5, font=dict(size=cfg['font_size']+4, color=cor_texto_eixos)),
                                 paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'], height=cfg['altura'],
                                 font=dict(family=cfg['font_family'], size=cfg['font_size'], color=cor_texto_eixos), showlegend=False,
-                                yaxis=dict(title=dict(text=cfg['label_y'], font=dict(color=cor_texto_eixos)), showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade'], showline=show_line, linewidth=1, linecolor=cor_texto_eixos, mirror=mirror_bool, tickfont=dict(color=cor_texto_eixos, size=cfg['font_size'])),
-                                xaxis=dict(title=dict(text=cfg['label_x'], font=dict(color=cor_texto_eixos)), showgrid=False, showline=show_line, linewidth=1, linecolor=cor_texto_eixos, mirror=mirror_bool, tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), categoryorder='array', categoryarray=ordem_trats)
+                                yaxis=dict(
+                                    title=dict(text=cfg['label_y'], font=dict(color=cor_texto_eixos)), 
+                                    showgrid=cfg['mostrar_grid'], gridcolor=cfg['cor_grade'], 
+                                    showline=show_line, linewidth=1, linecolor=cor_texto_eixos, 
+                                    mirror=mirror_bool, 
+                                    tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']),
+                                    showticklabels=mostrar_ticks, # <--- AQUI ESTAVA O ERRO
+                                    ticks='outside' if mostrar_ticks else '' # Ticks físicos
+                                ),
+                                xaxis=dict(
+                                    title=dict(text=cfg['label_x'], font=dict(color=cor_texto_eixos)), 
+                                    showgrid=False, 
+                                    showline=show_line, linewidth=1, linecolor=cor_texto_eixos, 
+                                    mirror=mirror_bool, 
+                                    tickfont=dict(color=cor_texto_eixos, size=cfg['font_size']), 
+                                    categoryorder='array', categoryarray=ordem_trats,
+                                    showticklabels=mostrar_ticks, # <--- AQUI TAMBÉM
+                                    ticks='outside' if mostrar_ticks else ''
+                                )
                             )
                             if cfg['mostrar_subgrade']:
                                 fig_viz.update_yaxes(minor=dict(showgrid=True, gridcolor=cfg['cor_subgrade'], gridwidth=0.5))
 
-                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v9_{col_resp}_{i}")
+                            st.plotly_chart(fig_viz, use_container_width=True, key=f"chart_final_v10_{col_resp}_{i}")
 
                             if st.button("Ocultar Resultado", key=f"btn_hide_np_{col_resp_original}"):
                                 st.session_state[key_np] = False; st.rerun()
