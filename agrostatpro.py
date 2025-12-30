@@ -538,14 +538,15 @@ def mostrar_editor_grafico(key_prefix, titulo_padrao, label_x_padrao, label_y_pa
 
 # OTIMIZAÇÃO: O cálculo do Tukey é pesado. Salvamos o resultado em cache.
 @st.cache_data(show_spinner=False)
-def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
+def tukey_manual_preciso(medias, mse, df_resid, r, n_trats, decrescente=True):
     """Calcula Tukey (HSD) e retorna DataFrame pronto com letras."""
     # 1. Cálculo do Delta (DMS)
     q_critico = studentized_range.ppf(1 - 0.05, n_trats, df_resid)
     dms = q_critico * np.sqrt(mse / r)
     
-    # 2. Ordenação
-    medias_ord = medias.sort_values(ascending=False)
+    # 2. Ordenação (Respeita o critério do usuário)
+    # Se decrescente=True (Maior é melhor), ascending=False
+    medias_ord = medias.sort_values(ascending=not decrescente)
     nomes = medias_ord.index.tolist()
     vals = medias_ord.values
     
@@ -565,7 +566,7 @@ def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
         
         # Tenta estender o grupo
         for i in range(idx_start + 1, len(vals)):
-            diff = referencia - vals[i] # Como está decrescente, ref >= val
+            diff = abs(referencia - vals[i]) # Diferença absoluta
             if diff < dms: # Não difere
                 grupo_atual.append(i)
             # Nota: Tukey permite sobreposição, então não paramos no primeiro fail em lógicas complexas,
@@ -590,9 +591,10 @@ def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
 
 # OTIMIZAÇÃO: Scott-Knott é recursivo e pesado. Cache essencial.
 @st.cache_data(show_spinner=False)
-def scott_knott(medias, mse, df_resid, r):
+def scott_knott(medias, mse, df_resid, r, n_trats, decrescente=True):
     """Algoritmo de Scott-Knott de agrupamento (Clusterização)."""
-    medias_ord = medias.sort_values(ascending=False)
+    # Ordenação respeitando critério do usuário
+    medias_ord = medias.sort_values(ascending=not decrescente)
     valores = medias_ord.values
     nomes = medias_ord.index
     
@@ -641,9 +643,11 @@ def scott_knott(medias, mse, df_resid, r):
     sk_recursive(0, len(valores))
     
     # Ajuste para garantir ordem alfabética a, b, c nos grupos formados (UX)
-    # Re-mapeia as letras baseadas na média do grupo
+    # Re-mapeia as letras baseadas na média do grupo, respeitando a ordem decrescente/crescente
     df_temp = pd.DataFrame({'Media': valores, 'LetraRaw': [resultados[n] for n in nomes]}, index=nomes)
-    media_grupos = df_temp.groupby('LetraRaw')['Media'].mean().sort_values(ascending=False)
+    
+    # Agrupa por letra e tira a média para saber quem é "a", "b"...
+    media_grupos = df_temp.groupby('LetraRaw')['Media'].mean().sort_values(ascending=not decrescente)
     
     mapa_final = {}
     for i, (letra_velha, _) in enumerate(media_grupos.items()):
@@ -887,62 +891,76 @@ def gerar_letras_dunn(trats, df_comparacoes):
 # Nota: Implementações alternativas de Tukey/Scott-Knott (Sem Cache)
 # e outras funções auxiliares mantidas conforme script original.
 
-def tukey_manual_preciso(medias, mse, df_resid, r, n_trats):
-    """Calcula o teste de Tukey e retorna DataFrame com letras."""
+def tukey_manual_preciso(medias, mse, df_resid, r, n_trats, decrescente=True):
+    """
+    Calcula o teste de Tukey e retorna DataFrame com letras.
+    Usa algoritmo de 'Maximal Contiguous Subsequences' para evitar redundância (ex: 'ab' no topo).
+    """
     from scipy.stats import studentized_range
     
-    # Ordena médias (decrescente)
-    medias_sorted = medias.sort_values(ascending=False)
+    # 1. Ordenação Robusta
+    medias_sorted = medias.sort_values(ascending=not decrescente)
     nomes = medias_sorted.index.tolist()
     vals = medias_sorted.values
+    n = len(vals)
     
-    # DMS (Diferença Mínima Significativa)
+    # 2. DMS (Diferença Mínima Significativa)
     alpha = 0.05
     q_val = studentized_range.ppf(1 - alpha, n_trats, df_resid)
     dms = q_val * np.sqrt(mse / r)
     
-    letras = {}
-    letra_atual = 97 # 'a' em ASCII
+    # 3. Identificação de Grupos (Cliques)
+    # A ideia é encontrar intervalos contíguos [i, j] onde (max - min) < DMS
+    # Só guardamos um intervalo se ele "estender" o alcance do anterior.
     
-    # Algoritmo de Agrupamento (Letras)
-    cobriu = [False] * len(vals)
+    grupos_indices = []
+    ultimo_fim = -1
     
-    for i in range(len(vals)):
-        if not cobriu[i]:
-            letra_char = chr(letra_atual)
-            letras[nomes[i]] = letras.get(nomes[i], "") + letra_char
-            cobriu[i] = True
-            
-            # Verifica quem mais entra no grupo desta média
-            for j in range(i + 1, len(vals)):
-                diff = vals[i] - vals[j]
-                if diff < dms: # Não significativo -> Mesma letra
-                    letras[nomes[j]] = letras.get(nomes[j], "") + letra_char
-                    # Nota: Não marcamos cobriu[j] = True aqui porque J pode participar de outros grupos (overlap)
-            
-            letra_atual += 1
+    for i in range(n):
+        # Tenta esticar o grupo começando em 'i' o máximo possível
+        fim_atual = i
+        for j in range(i + 1, n):
+            # Diferença entre o Pivô (i) e o Candidato (j)
+            if abs(vals[i] - vals[j]) < dms:
+                fim_atual = j
+            else:
+                break # Como está ordenado, se falhou um, os próximos falham tbm
+        
+        # Só cria uma nova letra se esse grupo cobrir alguém novo
+        # Se 'fim_atual' <= 'ultimo_fim', significa que esse grupo é um subconjunto
+        # do grupo anterior, então é redundante.
+        if fim_atual > ultimo_fim:
+            grupos_indices.append(range(i, fim_atual + 1))
+            ultimo_fim = fim_atual
 
-    # Formata retorno
+    # 4. Atribuição de Letras
+    letras_map = {idx: "" for idx in range(n)}
+    
+    for i, grp in enumerate(grupos_indices):
+        letra = get_letra_segura(i)
+        for idx in grp:
+            letras_map[idx] += letra
+            
+    # 5. Montagem do DataFrame
     res_df = pd.DataFrame({
         'Media': vals,
-        'Letras': [letras[n] for n in nomes]
+        'Letras': [letras_map[i] for i in range(n)]
     }, index=nomes)
     
     return res_df.sort_index()
 
-def scott_knott(medias, mse, df_resid, r, n_trats):
+def scott_knott(medias, mse, df_resid, r, n_trats, decrescente=True):
     """
     Implementação simplificada e robusta do Scott-Knott.
     Agrupa médias minimizando a soma de quadrados dentro dos grupos.
     """
     from scipy.stats import f
     
-    medias_sorted = medias.sort_values(ascending=False)
+    medias_sorted = medias.sort_values(ascending=not decrescente)
     vals = medias_sorted.values
     nomes = medias_sorted.index
     
     n = len(vals)
-    grupos_indices = [[i for i in range(n)]] # Começa com um grupão
     
     # Função para calcular BO (Soma de Quadrados Entre Grupos)
     def calcular_bo(grupo_idx):
@@ -988,7 +1006,7 @@ def scott_knott(medias, mse, df_resid, r, n_trats):
         v0 = n_trats / (np.pi - 2) # Graus de liberdade aproximados
         p_val = 1 - f.cdf(lambda_val, v0, df_resid) # Usando F como proxy robusto
         
-        # Limiar empírico para SK (geralmente mais relaxado que F puro)
+        # Limiar empírico para SK
         if p_val < 0.05: # Há diferença, divide
             g1 = grupo_atual[:corte]
             g2 = grupo_atual[corte:]
@@ -999,24 +1017,29 @@ def scott_knott(medias, mse, df_resid, r, n_trats):
     
     # Atribui letras aos grupos
     dic_res = {}
-    letra_ascii = 97
     
-    # Ordena grupos pela média (do maior para o menor já que vals está ordenado)
-    # A lógica acima já processa g1 (maiores) antes de g2
-    # Mas garantimos ordenação por média do grupo
-    grupos_finais.sort(key=lambda idxs: np.mean(vals[idxs]), reverse=True)
+    # Ordena grupos pela média
+    grupos_finais.sort(key=lambda idxs: np.mean(vals[idxs]), reverse=decrescente)
     
-    for grp in grupos_finais:
-        letra = chr(letra_ascii)
+    for i, grp in enumerate(grupos_finais):
+        letra = get_letra_segura(i)
         for idx in grp:
             nome_trat = nomes[idx]
             dic_res[nome_trat] = letra
-        letra_ascii += 1
         
     df_res = pd.DataFrame.from_dict(dic_res, orient='index', columns=['Grupo'])
     df_res['Media'] = medias
-    df_res = df_res.sort_values('Media', ascending=False)
+    df_res = df_res.sort_values('Media', ascending=not decrescente)
     
+    # Sincronização de Empates (Segurança para SK)
+    # Se médias forem idênticas, força mesma letra
+    medias_unicas = df_res['Media'].round(6).unique()
+    for m in medias_unicas:
+        mask = df_res['Media'].round(6) == m
+        if mask.sum() > 1:
+            primeira_letra = df_res.loc[mask, 'Grupo'].iloc[0]
+            df_res.loc[mask, 'Grupo'] = primeira_letra
+
     return df_res
 
 def rodar_analise_individual(df_input, col_trat, col_resp, delineamento, col_bloco=None):
@@ -1045,7 +1068,6 @@ def rodar_analise_individual(df_input, col_trat, col_resp, delineamento, col_blo
     anova_table = sm.stats.anova_lm(modelo, typ=2)
     
     # Teste F do Modelo Global (p_val)
-    # Pega o p-valor do primeiro tratamento listado como proxy principal ou do modelo
     try:
         # Tenta pegar o p-valor do fator principal ou interação
         idx_p = [x for x in anova_table.index if ':' in x or 'C(' in x][0]
@@ -1066,7 +1088,7 @@ def rodar_analise_individual(df_input, col_trat, col_resp, delineamento, col_blo
         
     vals_grupos = [df_f[col_resp][grupos == g].values for g in grupos.unique()]
     
-    # Bartlett (se normal) ou Levene (se não) - Aqui rodamos os dois para diagnóstico
+    # Bartlett (se normal) ou Levene (se não)
     try:
         b_stat, p_bartlett = stats.bartlett(*vals_grupos)
     except: p_bartlett = np.nan
@@ -1095,13 +1117,9 @@ def rodar_analise_conjunta(df_input, col_trat, col_resp, col_local, delineamento
     
     df_f = df_input.dropna(subset=[col_resp]).copy()
     
-    # Modelo Conjunta: Resp ~ Trat + Local + Trat:Local (+ Bloco/Local se DBC)
-    # Simplificação: Bloco aninhado em Local -> C(Local):C(Bloco)
-    
     form_base = f"{col_resp} ~ C({col_trat}) * C({col_local})"
     
     if delineamento == "DBC":
-        # Bloco dentro de Local
         form_base += f" + C({col_local}):C({col_bloco})"
         
     modelo = ols(form_base, data=df_f).fit()
@@ -1865,19 +1883,32 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 if analise_valida:
                     
                     if modo_analise == "INDIVIDUAL":
-                        # Verifica numérico
+                        # --- 1. GESTÃO DE ESTADO (MEMÓRIA) PARA ESTA VARIÁVEL ---
+                        # Chaves únicas para salvar as configs desta variável
+                        key_desc = f"final_desc_{col_resp}_{i}"
+                        key_show_mean = f"final_show_mean_{col_resp}_{i}"
+                        key_show_cv = f"final_show_cv_{col_resp}_{i}"
+
+                        # Se não existir na memória, define o padrão
+                        if key_desc not in st.session_state: st.session_state[key_desc] = True # Padrão: Maior (True)
+                        if key_show_mean not in st.session_state: st.session_state[key_show_mean] = True
+                        if key_show_cv not in st.session_state: st.session_state[key_show_cv] = True
+
+                        # Recupera os valores ATUAIS para usar nos cálculos (Estado Salvo)
+                        is_decrescente_final = st.session_state[key_desc]
+                        show_mean_final = st.session_state[key_show_mean]
+                        show_cv_final = st.session_state[key_show_cv]
+
+                        # Define o index do Radio para a interface refletir o estado salvo
+                        # 0 = Maior (True), 1 = Menor (False)
+                        idx_radio_padrao = 0 if is_decrescente_final else 1
+
+                        # --- 2. CÁLCULOS GLOBAIS (VALIDOS PARA TODAS AS ABAS) ---
                         eh_numerico = False
                         try:
                             pd.to_numeric(df_proc[col_trat], errors='raise')
                             eh_numerico = True
                         except: eh_numerico = False
-
-                        titulos_abas = []
-                        if eh_numerico: titulos_abas.append("📈 Regressão")
-                        titulos_abas.extend(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📊 Gráficos Barras"])
-                        
-                        tabs_ind = st.tabs(titulos_abas)
-                        idx_aba = 0
 
                         medias_ind = df_proc.groupby(col_trat)[col_resp].mean()
                         media_geral_valor = df_proc[col_resp].mean()
@@ -1885,7 +1916,37 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         n_trats_ind = len(medias_ind)
                         max_val_ind = medias_ind.max()
 
-                        # --- ABA REGRESSÃO ---
+                        # Cálculos Estatísticos usando a configuração FINAL (Salva)
+                        # Isso garante que Tukey, SK e Gráficos usem sempre a mesma lógica
+                        df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind, decrescente=is_decrescente_final)
+                        df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind, decrescente=is_decrescente_final)
+                        
+                        if 'Letras' in df_tukey_ind.columns: df_tukey_ind = df_tukey_ind.rename(columns={'Letras': 'Grupos'})
+                        if 'Grupo' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
+                        if 'Letras' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Letras': 'Grupos'})
+                        
+                        df_tukey_ind = df_tukey_ind[['Media', 'Grupos']]
+                        df_sk_ind = df_sk_ind[['Media', 'Grupos']]
+
+                        eh_fatorial = len(cols_trats) > 1
+                        interacao_sig = False
+                        if eh_fatorial:
+                            idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
+                            if idx_int:
+                                try:
+                                    p_int_val = res['anova'].loc[idx_int[-1], 'PR(>F)']
+                                    if p_int_val < 0.05: interacao_sig = True
+                                except: pass
+
+                        # --- 3. RENDERIZAÇÃO DAS ABAS ---
+                        titulos_abas = []
+                        if eh_numerico: titulos_abas.append("📈 Regressão")
+                        titulos_abas.extend(["📦 Teste de Tukey", "📦 Teste de Scott-Knott", "📊 Gráficos Barras"])
+                        
+                        tabs_ind = st.tabs(titulos_abas)
+                        idx_aba = 0
+
+                        # ABA REGRESSÃO
                         if eh_numerico:
                             with tabs_ind[idx_aba]:
                                 st.markdown(f"#### Análise de Regressão: {col_trat} vs {col_resp}")
@@ -1920,27 +1981,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.plotly_chart(fig_reg, use_container_width=True, key=f"chart_reg_{col_resp}_{i}")
                             idx_aba += 1
 
-                        # --- CÁLCULOS ---
-                        df_tukey_ind = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
-                        df_sk_ind = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind)
-                        
-                        if 'Letras' in df_tukey_ind.columns: df_tukey_ind = df_tukey_ind.rename(columns={'Letras': 'Grupos'})
-                        if 'Grupo' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Grupo': 'Grupos'})
-                        if 'Letras' in df_sk_ind.columns: df_sk_ind = df_sk_ind.rename(columns={'Letras': 'Grupos'})
-                        
-                        df_tukey_ind = df_tukey_ind[['Media', 'Grupos']]
-                        df_sk_ind = df_sk_ind[['Media', 'Grupos']]
-
-                        eh_fatorial = len(cols_trats) > 1
-                        interacao_sig = False
-                        if eh_fatorial:
-                            idx_int = [x for x in res['anova'].index if ":" in str(x) or " x " in str(x)]
-                            if idx_int:
-                                try:
-                                    p_int_val = res['anova'].loc[idx_int[-1], 'PR(>F)']
-                                    if p_int_val < 0.05: interacao_sig = True
-                                except: pass
-
                         # ABA TUKEY
                         with tabs_ind[idx_aba]:
                             if res['p_val'] > 0.05:
@@ -1953,15 +1993,42 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     st.error("🚨 **Interação Significativa.** Use a Matriz de Desdobramento abaixo.")
                                 
                                 st.markdown("#### Ranking Geral (Tukey)")
-                                
-                                # MENU DE PERSONALIZAÇÃO
-                                show_m_tk, show_cv_tk = mostrar_editor_tabela(f"tk_ind_{col_resp}_{i}")
-                                txt_m_tk, txt_cv_tk = calcular_texto_rodape(media_geral_valor, res['mse'], show_m_tk, show_cv_tk)
-                                
-                                # TABELA LIMPA
+
+                                # ==============================================================================
+                                # ⚙️ MENU DE CONFIGURAÇÃO (TUKEY)
+                                # ==============================================================================
+                                with st.expander("✏️ Personalizar Tabela (Rodapé e Dados)"):
+                                    col_cfg1, col_cfg2 = st.columns(2)
+                                    with col_cfg1:
+                                        st.markdown("##### 🎯 Objetivo Agronômico")
+                                        c_rank_temp_tk = st.radio(
+                                            "O que define o melhor tratamento?",
+                                            (
+                                                "⬆️ Quanto MAIOR os valores melhor é a variável (Ex: Produtividade, Peso)", 
+                                                "⬇️ Quanto MENOR os valores melhor é a variável (Ex: Doença, Ciclo, Acamamento)"
+                                            ),
+                                            index=idx_radio_padrao, # Usa o estado salvo
+                                            key=f"temp_rank_tk_{col_resp}_{i}"
+                                        )
+                                    with col_cfg2:
+                                        st.markdown("##### 📝 Opções de Exibição")
+                                        show_m_temp_tk = st.checkbox("Incluir Média Geral no Rodapé", value=show_mean_final, key=f"temp_mean_tk_{col_resp}_{i}")
+                                        show_cv_temp_tk = st.checkbox("Incluir CV (%) no Rodapé", value=show_cv_final, key=f"temp_cv_tk_{col_resp}_{i}")
+                                    
+                                    st.markdown("---")
+                                    # BOTÃO DE AÇÃO TUKEY - ATUALIZA TUDO
+                                    if st.button("🔄 Atualizar Tabela", key=f"btn_upd_tk_{col_resp}_{i}", use_container_width=True):
+                                        st.session_state[key_desc] = True if "MAIOR" in c_rank_temp_tk else False
+                                        st.session_state[key_show_mean] = show_m_temp_tk
+                                        st.session_state[key_show_cv] = show_cv_temp_tk
+                                        st.rerun()
+                                # ==============================================================================
+
+                                # TABELA
                                 st.dataframe(df_tukey_ind.style.format({"Media": "{:.2f}"}), use_container_width=True)
                                 
-                                # RODAPÉ DINÂMICO
+                                # RODAPÉ
+                                txt_m_tk, txt_cv_tk = calcular_texto_rodape(media_geral_valor, res['mse'], show_mean_final, show_cv_final)
                                 infos_extras = []
                                 if txt_cv_tk: infos_extras.append(txt_cv_tk)
                                 if txt_m_tk: infos_extras.append(txt_m_tk)
@@ -1990,14 +2057,42 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
                                 st.markdown("#### Ranking Geral (Scott-Knott)")
                                 
-                                # MENU DE PERSONALIZAÇÃO
-                                show_m_sk, show_cv_sk = mostrar_editor_tabela(f"sk_ind_{col_resp}_{i}")
-                                txt_m_sk, txt_cv_sk = calcular_texto_rodape(media_geral_valor, res['mse'], show_m_sk, show_cv_sk)
-                                
-                                # TABELA LIMPA
+                                # ==============================================================================
+                                # ⚙️ MENU DE CONFIGURAÇÃO (SCOTT-KNOTT) - TOTALMENTE SINCRONIZADO
+                                # ==============================================================================
+                                with st.expander("✏️ Personalizar Tabela (Rodapé e Dados)"):
+                                    col_cfg1, col_cfg2 = st.columns(2)
+                                    with col_cfg1:
+                                        st.markdown("##### 🎯 Objetivo Agronômico")
+                                        c_rank_temp_sk = st.radio(
+                                            "O que define o melhor tratamento?",
+                                            (
+                                                "⬆️ Quanto MAIOR os valores melhor é a variável (Ex: Produtividade, Peso)", 
+                                                "⬇️ Quanto MENOR os valores melhor é a variável (Ex: Doença, Ciclo, Acamamento)"
+                                            ),
+                                            index=idx_radio_padrao, # Usa o MESMO estado salvo
+                                            key=f"temp_rank_sk_{col_resp}_{i}"
+                                        )
+                                    with col_cfg2:
+                                        st.markdown("##### 📝 Opções de Exibição")
+                                        show_m_temp_sk = st.checkbox("Incluir Média Geral no Rodapé", value=show_mean_final, key=f"temp_mean_sk_{col_resp}_{i}")
+                                        show_cv_temp_sk = st.checkbox("Incluir CV (%) no Rodapé", value=show_cv_final, key=f"temp_cv_sk_{col_resp}_{i}")
+                                    
+                                    st.markdown("---")
+                                    # BOTÃO DE AÇÃO SCOTT-KNOTT - ATUALIZA TUDO
+                                    if st.button("🔄 Atualizar Tabela", key=f"btn_upd_sk_{col_resp}_{i}", use_container_width=True):
+                                        # Atualiza as MESMAS chaves de sessão
+                                        st.session_state[key_desc] = True if "MAIOR" in c_rank_temp_sk else False
+                                        st.session_state[key_show_mean] = show_m_temp_sk
+                                        st.session_state[key_show_cv] = show_cv_temp_sk
+                                        st.rerun()
+                                # ==============================================================================
+
+                                # TABELA
                                 st.dataframe(df_sk_ind.style.format({"Media": "{:.2f}"}), use_container_width=True)
                                 
-                                # RODAPÉ DINÂMICO
+                                # RODAPÉ
+                                txt_m_sk, txt_cv_sk = calcular_texto_rodape(media_geral_valor, res['mse'], show_mean_final, show_cv_final)
                                 infos_extras_sk = []
                                 if txt_cv_sk: infos_extras_sk.append(txt_cv_sk)
                                 if txt_m_sk: infos_extras_sk.append(txt_m_sk)
@@ -2013,7 +2108,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                     df_m_sk = gerar_dataframe_matriz_total(df_proc, fl_sk, fc_sk, scott_knott, res['mse'], res['df_resid'])
                                     st.dataframe(df_m_sk)
 
-                        # ABA GRÁFICOS
+                        # --- ABA GRÁFICOS ---
                         with tabs_ind[idx_aba+2]:
                             if res['p_val'] > 0.05:
                                 st.warning("⚠️ **ANOVA Não Significativa.**")
@@ -2023,10 +2118,17 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             with container_graf:
                                 sub_tabs_graf = st.tabs(["📊 Gráfico Tukey", "📊 Gráfico Scott-Knott"])
                                 
+                                # Recalcula/Reordena para gráficos usando a variável Global is_decrescente_final
+                                df_tk_g = tukey_manual_preciso(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind, decrescente=is_decrescente_final)
+                                if 'Letras' in df_tk_g.columns: df_tk_g = df_tk_g.rename(columns={'Letras': 'Grupos'})
+                                
+                                df_sk_g = scott_knott(medias_ind, res['mse'], res['df_resid'], reps_ind, n_trats_ind, decrescente=is_decrescente_final)
+                                if 'Grupo' in df_sk_g.columns: df_sk_g = df_sk_g.rename(columns={'Grupo': 'Grupos'})
+                                
                                 with sub_tabs_graf[0]:
                                     cfg_tk = mostrar_editor_grafico(f"tk_ind_{col_resp}_{i}", "Médias (Tukey)", col_trat, col_resp, usar_cor_unica=True)
                                     if eh_fatorial:
-                                        df_plot_tk = df_tukey_ind.reset_index().rename(columns={'index': col_trat})
+                                        df_plot_tk = df_tk_g.reset_index().rename(columns={'index': col_trat})
                                         try:
                                             split_data = df_plot_tk[col_trat].astype(str).str.split(' + ', expand=True)
                                             if split_data.shape[1] >= 2:
@@ -2036,15 +2138,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                             else: f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
                                         except: f_tk = px.bar(df_plot_tk, x=col_trat, y='Media', text='Grupos')
                                     else:
-                                        f_tk = px.bar(df_tukey_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
+                                        f_tk = px.bar(df_tk_g.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos')
                                     
                                     st.plotly_chart(estilizar_grafico_avancado(f_tk, cfg_tk, max_val_ind), use_container_width=True, key=f"chart_bar_tk_{col_resp}_{i}")
                                 
                                 with sub_tabs_graf[1]:
-                                    grps_sk = sorted(df_sk_ind['Grupos'].unique())
+                                    grps_sk = sorted(df_sk_g['Grupos'].dropna().unique())
                                     cfg_sk = mostrar_editor_grafico(f"sk_ind_{col_resp}_{i}", "Médias (Scott-Knott)", col_trat, col_resp, usar_cor_unica=False, grupos_sk=grps_sk)
                                     if eh_fatorial:
-                                        df_plot_sk = df_sk_ind.reset_index().rename(columns={'index': col_trat})
+                                        df_plot_sk = df_sk_g.reset_index().rename(columns={'index': col_trat})
                                         try:
                                             split_data = df_plot_sk[col_trat].astype(str).str.split(' + ', expand=True)
                                             if split_data.shape[1] >= 2:
@@ -2054,7 +2156,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                             else: f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
                                         except: f_sk = px.bar(df_plot_sk, x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
                                     else:
-                                        f_sk = px.bar(df_sk_ind.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
+                                        f_sk = px.bar(df_sk_g.reset_index().rename(columns={'index':col_trat}), x=col_trat, y='Media', text='Grupos', color='Grupos', color_discrete_map=cfg_sk['cores_map'])
                                     
                                     st.plotly_chart(estilizar_grafico_avancado(f_sk, cfg_sk, max_val_ind), use_container_width=True, key=f"chart_bar_sk_{col_resp}_{i}")
 # ==============================================================================
@@ -2210,19 +2312,31 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 grafico_final_obj = None 
                 tabela_final_obj = None
 
+                # Tenta recuperar o critério de ordenação do estado GLOBAL (definido no Bloco 18 ou aqui)
+                # Se não existir (caso não-paramétrico que pulou o bloco 18), define padrão
+                key_desc_glob = f"final_desc_{col_resp}_{i}"
+                if key_desc_glob in st.session_state:
+                    sort_desc = st.session_state[key_desc_glob]
+                else:
+                    sort_desc = True # Padrão: Maior é melhor
+
                 if analise_valida:
+                    # ==========================================================
+                    # CENÁRIO: PARAMÉTRICA (Gera apenas objetos PDF, Silencioso)
+                    # ==========================================================
                     if transf_atual != "Nenhuma":
                         st.markdown("---"); st.markdown("### 🛡️ Solução Final: Análise Paramétrica (ANOVA)")
                         st.success(f"✅ **Transformação Eficaz!** Com **{transf_atual}**, os pressupostos foram atendidos.")
                         if st.button("Voltar ao Original", key=f"reset_success_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
                     
-                    # Se for Paramétrica, geramos um gráfico padrão para o relatório (Tukey)
-                    # Isso garante que o relatório tenha gráfico mesmo se o usuário não clicou nas abas
                     try:
                         medias_rep = df_proc.groupby(col_trat)[col_resp].mean()
                         reps_rep = df_proc.groupby(col_trat)[col_resp].count().mean()
-                        df_tk_rep = tukey_manual_preciso(medias_rep, res_model.mse_resid, res_model.df_resid, reps_rep, len(medias_rep))
+                        
+                        # Usa a configuração global definida no Bloco 18
+                        df_tk_rep = tukey_manual_preciso(medias_rep, res_model.mse_resid, res_model.df_resid, reps_rep, len(medias_rep), decrescente=sort_desc)
+                        
                         if 'Letras' in df_tk_rep.columns: df_tk_rep = df_tk_rep.rename(columns={'Letras': 'Grupos'})
                         tabela_final_obj = df_tk_rep[['Media', 'Grupos']]
                         
@@ -2238,6 +2352,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     except: pass
 
                 else:
+                    # ==========================================================
+                    # CENÁRIO: NÃO-PARAMÉTRICA (Exibe Tudo e Tem Menu Próprio)
+                    # ==========================================================
                     st.markdown("---"); st.error("🚨 ALERTA ESTATÍSTICO: ANOVA INVÁLIDA")
                     st.markdown("**Solução:** Usaremos a **Mediana** e testes baseados em postos (Ranks).")
                     
@@ -2250,19 +2367,55 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         if st.button("Voltar ao Original", key=f"reset_log_{col_resp_original}"):
                             set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
                     elif transf_atual == "Raiz Quadrada (SQRT)":
-                        st.warning("Transformações não resolveram.")
+                        st.warning("⚠️ **ATENÇÃO:** As transformações (Logarítmica e Raiz Quadrada) não foram eficazes. Por isso, foi necessário recorrer à estatística não paramétrica.")
                         
                         # --- CÁLCULO NÃO-PARAMÉTRICO ---
                         nome_np, stat_np, p_np = calcular_nao_parametrico(df_proc, col_trat, col_resp, delineamento, col_bloco)
                         
+                        # --- EXIBIÇÃO DA INTERPRETAÇÃO DO TESTE ---
                         c1, c2 = st.columns([1, 3])
                         with c1: st.metric(f"Teste: {nome_np}", f"{stat_np:.2f}")
                         with c2: 
                             sig_label = "Significativo" if p_np < 0.05 else "Não Significativo"
                             st.metric("P-valor", f"{p_np:.4f}", sig_label, delta_color="normal" if p_np < 0.05 else "inverse")
                         
-                        # --- TABELA DE MEDIANAS ---
+                        if p_np < 0.05:
+                            st.success(f"✅ **Diferença Detectada (P < 0.05):** O teste de {nome_np} indica que pelo menos um tratamento difere estatisticamente dos demais.")
+                        else:
+                            st.warning(f"⚠️ **Não Significativo (P >= 0.05):** Não há evidências estatísticas de diferença entre as medianas dos tratamentos.")
+                        
                         st.markdown("#### 🏆 Ranking de Medianas")
+
+                        # ==============================================================================
+                        # ⚙️ MENU DE CONFIGURAÇÃO (NÃO PARAMÉTRICO)
+                        # ==============================================================================
+                        # Inicializa Estado para NP se não existir
+                        if key_desc_glob not in st.session_state: st.session_state[key_desc_glob] = True
+                        sort_desc_np_atual = st.session_state[key_desc_glob]
+
+                        with st.expander("✏️ Personalizar Tabela (Rodapé e Dados)"):
+                            st.markdown("##### 🎯 Objetivo Agronômico")
+                            idx_padrao_np = 0 if sort_desc_np_atual else 1
+                            c_rank_np = st.radio(
+                                "O que define o melhor tratamento?",
+                                (
+                                    "⬆️ Quanto MAIOR os valores melhor é a variável (Ex: Produtividade, Peso)", 
+                                    "⬇️ Quanto MENOR os valores melhor é a variável (Ex: Doença, Ciclo, Acamamento)"
+                                ),
+                                index=idx_padrao_np, 
+                                key=f"temp_rank_np_{col_resp}_{i}"
+                            )
+                            st.markdown("---")
+                            
+                            # BOTÃO DE ATUALIZAÇÃO
+                            if st.button("🔄 Atualizar Tabela", key=f"btn_upd_np_{col_resp}_{i}", use_container_width=True):
+                                st.session_state[key_desc_glob] = True if "MAIOR" in c_rank_np else False
+                                st.rerun()
+                        
+                        # Usa o valor do Estado Global
+                        sort_desc_np = st.session_state[key_desc_glob]
+
+                        # --- TABELA DE MEDIANAS ---
                         df_meds = df_proc.groupby(col_trat)[col_resp].median().reset_index(name='Mediana')
                         df_iqr = df_proc.groupby(col_trat)[col_resp].apply(lambda x: f"{x.min():.2f} – {x.max():.2f}").reset_index(name='Amplitude')
                         df_final = pd.merge(df_meds, df_iqr, on=col_trat)
@@ -2275,11 +2428,37 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         else:
                             df_final['Grupo'] = "a"
                             
-                        df_final = df_final.sort_values('Mediana', ascending=False)
+                        # 1. ORDENAÇÃO DINÂMICA ROBUSTA
+                        df_final = df_final.sort_values('Mediana', ascending=not sort_desc_np)
+                        
+                        # 2. RE-MAPEAMENTO VISUAL DAS LETRAS
+                        if p_np < 0.05 and 'Grupo' in df_final.columns:
+                            letras_na_ordem = []
+                            seen = set()
+                            for l in df_final['Grupo']:
+                                if l not in seen:
+                                    letras_na_ordem.append(l)
+                                    seen.add(l)
+                            
+                            mapa_letras = {}
+                            ascii_char = 97 # 'a'
+                            for l_antiga in letras_na_ordem:
+                                mapa_letras[l_antiga] = get_letra_segura(ascii_char - 97)
+                                ascii_char += 1
+                            
+                            df_final['Grupo'] = df_final['Grupo'].map(mapa_letras)
+
                         ordem_trats = df_final[col_trat].tolist()
                         tabela_final_obj = df_final # Guarda para o relatório
                         
                         st.dataframe(df_final.style.format({"Mediana": "{:.2f}"}), hide_index=True)
+                        
+                        # --- NOTA DE RODAPÉ (PADRÃO CIENTÍFICO) ---
+                        if p_np < 0.05:
+                            st.markdown("> **Nota:** Medianas seguidas pela mesma letra na coluna não diferem estatisticamente entre si pelo teste de Dunn a 5% de probabilidade.")
+                        else:
+                            st.markdown("> **Nota:** Pela ausência de significância no teste de Kruskal-Wallis (p ≥ 0.05), as medianas não diferem estatisticamente entre si.")
+                            
                         st.markdown("---")
 
                         # --- VISUALIZAÇÃO INTELIGENTE ---
@@ -2302,30 +2481,72 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         cor_txt = cfg['cor_texto']
                         cor_borda = 'black'
 
+                        # --- CONFIGURAÇÕES VISUAIS APLICADAS ---
+                        pos_txt_final = 'top center' # Default para 'outside' ou 'auto'
+                        if cfg.get('posicao_texto') == 'inside': 
+                            pos_txt_final = 'bottom center'
+                        
+                        def aplicar_estilo_texto(texto):
+                            if cfg.get('letras_negrito', False):
+                                return f"<b>{texto}</b>"
+                            return texto
+
                         if "Dot Plot" in tipo_grafico:
-                            fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers+text', marker=dict(size=18, color=cor_princ, symbol='circle', line=dict(width=2, color='white')), text=df_final['Grupo'], textposition='top center', textfont=dict(size=cfg['font_size']+2, color=cor_txt), name='Mediana'))
+                            labels_estilizados = [aplicar_estilo_texto(t) for t in df_final['Grupo']]
+                            fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers+text', marker=dict(size=18, color=cor_princ, symbol='circle', line=dict(width=2, color='white')), text=labels_estilizados, textposition=pos_txt_final, textfont=dict(size=cfg['font_size']+2, color=cor_txt), name='Mediana'))
                             fig_viz.update_traces(showlegend=False)
+                        
                         elif "Barras" in tipo_grafico:
                             df_min = df_proc.groupby(col_trat)[col_resp].min(); df_max = df_proc.groupby(col_trat)[col_resp].max()
                             erros_sup = []; erros_inf = []
+                            text_pos_y = []
+                            text_labels = []
+                            
                             for t in ordem_trats:
                                 m = df_final[df_final[col_trat]==t]['Mediana'].values[0]
-                                erros_sup.append(df_max[t] - m); erros_inf.append(m - df_min[t])
-                            fig_viz.add_trace(go.Bar(x=df_final[col_trat], y=df_final['Mediana'], text=df_final['Grupo'], textposition='outside', textfont=dict(size=cfg['font_size'], color=cor_txt), marker_color=cor_princ, error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cor_txt, thickness=1.5, width=5)))
+                                val_max = df_max[t]
+                                val_min = df_min[t]
+                                erros_sup.append(val_max - m)
+                                erros_inf.append(m - val_min)
+                                text_pos_y.append(val_max)
+                                raw_label = df_final[df_final[col_trat]==t]['Grupo'].values[0]
+                                text_labels.append(aplicar_estilo_texto(raw_label))
+
+                            fig_viz.add_trace(go.Bar(
+                                x=df_final[col_trat], y=df_final['Mediana'], 
+                                marker_color=cor_princ, 
+                                error_y=dict(type='data', symmetric=False, array=erros_sup, arrayminus=erros_inf, visible=True, color=cor_txt, thickness=1.5, width=5)
+                            ))
+                            
+                            fig_viz.add_trace(go.Scatter(
+                                x=df_final[col_trat], y=text_pos_y, text=text_labels, 
+                                mode='text', textposition=pos_txt_final, 
+                                textfont=dict(size=cfg['font_size'], color=cor_txt),
+                                hoverinfo='skip', showlegend=False
+                            ))
+
                         elif "Boxplot" in tipo_grafico:
-                            fig_viz.add_trace(go.Box(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", marker_color=cor_princ, boxpoints='all', jitter=0.3, pointpos=0, line=dict(color=cor_borda, width=1.5), fillcolor=cor_princ))
+                            fig_viz.add_trace(go.Box(
+                                x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", 
+                                marker_color=cor_princ, boxpoints=False, 
+                                line=dict(color=cor_borda, width=1.5), fillcolor=cor_princ
+                            ))
                             y_pos = []; txts = []; margin = (df_proc[col_resp].max() - df_proc[col_resp].min()) * 0.1
                             for t in ordem_trats:
                                 y_pos.append(df_proc[df_proc[col_trat]==t][col_resp].max() + margin)
-                                txts.append(df_final[df_final[col_trat]==t]['Grupo'].values[0])
-                            fig_viz.add_trace(go.Scatter(x=ordem_trats, y=y_pos, text=txts, mode='text', textposition='top center', showlegend=False, textfont=dict(size=cfg['font_size'], color=cor_txt)))
+                                raw_l = df_final[df_final[col_trat]==t]['Grupo'].values[0]
+                                txts.append(aplicar_estilo_texto(raw_l))
+                                
+                            fig_viz.add_trace(go.Scatter(x=ordem_trats, y=y_pos, text=txts, mode='text', textposition=pos_txt_final, showlegend=False, textfont=dict(size=cfg['font_size'], color=cor_txt)))
+                        
                         elif "Strip Plot" in tipo_grafico:
                             fig_viz.add_trace(go.Box(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", boxpoints='all', jitter=0.3, pointpos=0, fillcolor='rgba(0,0,0,0)', line=dict(width=0), marker=dict(color=cor_princ, size=10, opacity=0.8, line=dict(width=1, color=cor_borda)), showlegend=False))
                             fig_viz.add_trace(go.Scatter(x=df_final[col_trat], y=df_final['Mediana'], mode='markers', marker=dict(symbol='line-ew', size=40, color=cor_txt, line=dict(width=3)), name='Mediana', hoverinfo='y'))
+                        
                         elif "Violin" in tipo_grafico:
                             fig_viz.add_trace(go.Violin(x=df_proc[col_trat], y=df_proc[col_resp], name="Dados", line_color=cor_princ, box_visible=True, points='all', fillcolor=cor_princ, opacity=0.6))
 
-                        # Layout
+                        # Layout Global
                         show_line = True if cfg['estilo_borda'] != "Sem Bordas" else False
                         mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                         mostrar_ticks = cfg.get('mostrar_ticks', True)
