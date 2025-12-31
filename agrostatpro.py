@@ -1768,11 +1768,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     else:
                         st.success(f"🕵️ **AUDITORIA DE DADOS:** Dados limpos! ({len(indices_removidos)} valores removidos).")
 
-                    with st.expander("🔍 Visualizar e Limpar Dados Suspeitos", expanded=True):
+                    # --- ALTERAÇÃO AQUI: NOVO TÍTULO DO EXPANDER ---
+                    with st.expander("🕵️ Gerenciar Outliers (Limpeza e Restauração)", expanded=True):
                         
                         # --- 1. AVISO AMARELO (GUIA DE DECISÃO) ---
                         st.warning("""
-                        ### ⚠️ PARE E LEIA ANTES DE REMOVER!
+                        ### PARE E LEIA ANTES DE REMOVER!
                         A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
                         
                         * ✅ **QUANDO MANTER (Não Marcar):**
