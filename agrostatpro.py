@@ -90,7 +90,7 @@ def formatar_numero(valor, decimais=2):
 
 
 # ==============================================================================
-# 📂 BLOCO 03: Formatação de Tabelas e Classificações
+# 📂 BLOCO 03: Formatação de Tabelas e Classificações (CORRIGIDO)
 # ==============================================================================
 def formatar_tabela_anova(anova_df):
     cols_map = {'sum_sq': 'SQ', 'df': 'GL', 'F': 'Fcalc', 'PR(>F)': 'P-valor'}
@@ -105,8 +105,19 @@ def formatar_tabela_anova(anova_df):
     new_index = []
     for idx in df.index:
         nome = str(idx)
-        nome = nome.replace('C(', '').replace(', Sum)', '').replace(')', '')
+        
+        # 1. Remove estruturas do Statsmodels (C e Sum)
+        nome = nome.replace('C(', '').replace(', Sum)', '')
+        
+        # 2. Remove a proteção Q(...) que deixa o nome feio
+        # Remove Q(' e ') ou Q(" e ")
+        nome = nome.replace("Q('", "").replace("')", "")
+        nome = nome.replace('Q("', "").replace('")', "")
+        
+        # 3. Limpeza final
+        nome = nome.replace(')', '') # Fecha parenteses sobrando
         nome = nome.replace(':', ' x ')
+        
         if 'Residual' in nome: nome = 'Resíduo'
         new_index.append(nome)
         
@@ -115,9 +126,9 @@ def formatar_tabela_anova(anova_df):
     def verificar_sig(p):
         if pd.isna(p): return "" 
         if p < 0.001: return "***" 
-        if p < 0.01: return "**"    
-        if p < 0.05: return "*"      
-        return "ns"                  
+        if p < 0.01: return "**"     
+        if p < 0.05: return "*"       
+        return "ns"                   
     
     if 'P-valor' in df.columns:
         df['Sig.'] = df['P-valor'].apply(verificar_sig)
@@ -393,7 +404,7 @@ def aplicar_transformacao(df, col_resp, tipo_transformacao):
 
 
 # ==============================================================================
-# 📂 BLOCO 06: Estilos Gráficos e Editor Visual
+# 📂 BLOCO 06: Estilos Gráficos e Editor Visual (+ Diagnóstico de Resíduos)
 # ==============================================================================
 def estilizar_grafico_avancado(fig, configs, dados_max=None):
     range_y = None
@@ -436,7 +447,6 @@ def estilizar_grafico_avancado(fig, configs, dados_max=None):
         ),
         font=dict(family=configs['font_family'], size=configs['font_size'], color=configs['cor_texto']),
         showlegend=configs['mostrar_legenda'],
-        # Configuração da Legenda para evitar texto invisível
         legend=dict(
             title=dict(text=f"<b>{configs['titulo_legenda']}</b>", font=dict(color=configs['cor_texto'])), 
             bgcolor=configs['cor_fundo'], 
@@ -458,7 +468,6 @@ def estilizar_grafico_avancado(fig, configs, dados_max=None):
     if configs.get('cor_barras'):
         fig.update_traces(marker_color=configs['cor_barras'])
     
-    # Renomeação de Grupos (Correção de tipos string)
     if configs.get('mapa_nomes_grupos'):
         mapa_str = {str(k).strip(): str(v).strip() for k, v in configs['mapa_nomes_grupos'].items()}
         for trace in fig.data:
@@ -527,6 +536,55 @@ def mostrar_editor_grafico(key_prefix, titulo_padrao, label_x_padrao, label_y_pa
             st.markdown("---")
             submit_button = st.form_submit_button("🔄 Atualizar Gráfico")
     return {"cor_fundo": cor_fundo, "cor_texto": cor_texto, "cor_grade": cor_grade, "cor_subgrade": cor_subgrade, "cor_barras": cor_barras, "cores_map": cores_map, "mapa_nomes_grupos": mapa_nomes_grupos, "titulo_custom": titulo_custom, "label_y": label_y, "label_x": label_x, "titulo_legenda": titulo_legenda, "font_family": font_family, "font_size": font_size, "altura": altura, "mostrar_grid": mostrar_grid, "mostrar_subgrade": mostrar_subgrade, "estilo_subgrade": estilo_subgrade, "estilo_borda": estilo_borda, "mostrar_ticks": mostrar_ticks, "posicao_texto": mapa_pos[pos_escolhida], "letras_negrito": letras_negrito, "mostrar_legenda": mostrar_legenda}
+
+# --- NOVA FUNÇÃO PARA DIAGNÓSTICO DE RESÍDUOS ---
+def plotar_diagnostico_residuos(modelo):
+    """
+    Gera QQ-Plot e Resíduos vs Preditos usando Plotly.
+    """
+    import plotly.graph_objects as go
+    from scipy import stats
+    
+    resid = modelo.resid
+    fitted = modelo.fittedvalues
+    
+    # 1. QQ-Plot (Normalidade)
+    (osm, osr), (slope, intercept, r) = stats.probplot(resid, dist="norm", plot=None)
+    
+    fig_qq = go.Figure()
+    fig_qq.add_trace(go.Scatter(x=osm, y=osr, mode='markers', name='Resíduos', marker=dict(color='#2E86C1', size=8, opacity=0.7)))
+    
+    # Linha de referência
+    x_line = np.array([min(osm), max(osm)])
+    y_line = slope * x_line + intercept
+    fig_qq.add_trace(go.Scatter(x=x_line, y=y_line, mode='lines', name='Normal Teórica', line=dict(color='red', dash='dash')))
+    
+    fig_qq.update_layout(
+        title="<b>QQ-Plot (Normalidade)</b>",
+        xaxis_title="Quantis Teóricos",
+        yaxis_title="Resíduos Padronizados",
+        template="plotly_white",
+        height=400,
+        showlegend=False
+    )
+    
+    # 2. Resíduos vs Preditos (Homocedasticidade)
+    fig_res = go.Figure()
+    fig_res.add_trace(go.Scatter(x=fitted, y=resid, mode='markers', name='Dados', marker=dict(color='#28B463', size=8, opacity=0.7)))
+    
+    # Linha zero
+    fig_res.add_hline(y=0, line_dash="dash", line_color="red")
+    
+    fig_res.update_layout(
+        title="<b>Resíduos vs Preditos (Homogeneidade)</b>",
+        xaxis_title="Valores Preditos (Médias Ajustadas)",
+        yaxis_title="Resíduos",
+        template="plotly_white",
+        height=400,
+        showlegend=False
+    )
+    
+    return fig_qq, fig_res
 # ==============================================================================
 # 🏁 FIM DO BLOCO 06
 # ==============================================================================
@@ -1143,15 +1201,16 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     df_calc = df.copy()
     res = {}
     
-    # 1. Montagem Dinâmica da Fórmula (fator1 * fator2 * ...)
+    # 1. Montagem Dinâmica da Fórmula com Proteção Q() para caracteres especiais (%, espaços)
     # O operador '*' no Patsy gera automaticamente Efeitos Principais + Interações
-    termos_trats = [f"C({trat}, Sum)" for trat in cols_trats]
+    # Q('Nome') protege nomes com espaços, %, -, etc.
+    termos_trats = [f"C(Q('{trat}'), Sum)" for trat in cols_trats]
     formula_trats = " * ".join(termos_trats)
     
     if delineamento == 'DBC': 
-        formula = f"{col_resp} ~ {formula_trats} + C({col_bloco}, Sum)"
+        formula = f"Q('{col_resp}') ~ {formula_trats} + C(Q('{col_bloco}'), Sum)"
     else: 
-        formula = f"{col_resp} ~ {formula_trats}"
+        formula = f"Q('{col_resp}') ~ {formula_trats}"
     
     # 2. Execução do Modelo
     try:
@@ -1170,14 +1229,18 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     # 3. Extração do P-valor (Busca o P-valor da interação de maior ordem ou do fator único)
     try:
         if len(cols_trats) == 1:
-            res['p_val'] = anova.loc[f"C({cols_trats[0]}, Sum)", "PR(>F)"]
+            # Procura por strings parciais pois o Q('') altera o nome no index
+            idx_found = [ix for ix in anova.index if f"Q('{cols_trats[0]}')" in str(ix)][0]
+            res['p_val'] = anova.loc[idx_found, "PR(>F)"]
         else:
             # Tenta pegar a interação total (ex: A:B:C)
-            p_found = 1.0
+            # Conta quantos ':' tem no index para achar a interação de maior ordem
+            target_depth = len(cols_trats) - 1
             for idx in anova.index:
-                if str(idx).count(":") == len(cols_trats) - 1: # Ex: 2 fatores tem 1 ':', 3 fatores tem 2 ':'
+                if str(idx).count(":") == target_depth and "Residual" not in str(idx):
                       res['p_val'] = anova.loc[idx, "PR(>F)"]
                       break
+            if 'p_val' not in res: res['p_val'] = 1.0
     except:
         res['p_val'] = 1.0 # Fallback seguro
 
@@ -1192,8 +1255,11 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
         
     grupos_vals = [g[col_resp].values for _, g in df_calc.assign(temp_group=grupo_combinado).groupby('temp_group')]
     
-    res['bartlett'] = stats.bartlett(*grupos_vals)
-    res['levene'] = stats.levene(*grupos_vals, center='median')
+    try: res['bartlett'] = stats.bartlett(*grupos_vals)
+    except: res['bartlett'] = (0, np.nan)
+        
+    try: res['levene'] = stats.levene(*grupos_vals, center='median')
+    except: res['levene'] = (0, np.nan)
     
     return res
 
@@ -1205,12 +1271,14 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     """
     df_calc = df.copy()
     res = {}
+    
+    # Proteção Q() aplicada aqui também
     if delineamento == 'DBC':
-        termos = f"C({col_trat_combo}, Sum) * C({col_local}, Sum) + C({col_bloco}, Sum):C({col_local}, Sum)"
+        termos = f"C(Q('{col_trat_combo}'), Sum) * C(Q('{col_local}'), Sum) + C(Q('{col_bloco}'), Sum):C(Q('{col_local}'), Sum)"
     else:
-        termos = f"C({col_trat_combo}, Sum) * C({col_local}, Sum)"
+        termos = f"C(Q('{col_trat_combo}'), Sum) * C(Q('{col_local}'), Sum)"
         
-    formula = f"{col_resp} ~ {termos}"
+    formula = f"Q('{col_resp}') ~ {termos}"
     
     try:
         modelo = ols(formula, data=df_calc).fit()
@@ -1224,18 +1292,28 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     res['shapiro'] = stats.shapiro(modelo.resid)
+    
     grupos = [g[col_resp].values for _, g in df_calc.groupby(col_trat_combo)]
-    res['bartlett'] = stats.bartlett(*grupos)
-    res['levene'] = stats.levene(*grupos, center='median')
+    try: res['bartlett'] = stats.bartlett(*grupos)
+    except: res['bartlett'] = (0, np.nan)
+        
+    try: res['levene'] = stats.levene(*grupos, center='median')
+    except: res['levene'] = (0, np.nan)
     
     res['p_trat'] = 1.0
     res['p_interacao'] = 1.0
     
+    # Busca robusta pelos P-valores (Considerando a sintaxe Q('...'))
     for idx in anova.index:
         nome = str(idx)
-        if col_trat_combo in nome and col_local not in nome and ":" not in nome:
+        # Verifica se contém o nome da coluna (ignora a sintaxe exata do Q wrapper na busca substring)
+        has_trat = col_trat_combo in nome
+        has_local = col_local in nome
+        has_interacao = ":" in nome
+        
+        if has_trat and not has_local and not has_interacao:
             res['p_trat'] = anova.loc[idx, "PR(>F)"]
-        if col_trat_combo in nome and col_local in nome and ":" in nome:
+        if has_trat and has_local and has_interacao:
             res['p_interacao'] = anova.loc[idx, "PR(>F)"]
             
     return res
@@ -1256,8 +1334,11 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
         df_loc = df[df[col_local] == loc]
         # Roda a análise individual para pegar o MSE (QMRes)
         # Nota: Passamos [col_trat] como lista porque a função individual espera lista
-        res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
-        mses.append(res['mse'])
+        try:
+            res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
+            mses.append(res['mse'])
+        except:
+            pass # Ignora locais com erro (ex: variância zero)
         
     if not mses: return 0, 0, 0
     
@@ -1510,7 +1591,163 @@ elif modo_app == "🎲 Sorteio Experimental":
 
 
 # ==============================================================================
-# 📂 BLOCO 14: Execução Principal - Setup e Inicialização (DIAGNÓSTICO RIGOROSO)
+# 📂 BLOCO 13-B: Auditoria de Qualidade de Dados (Detecção de Outliers) - V9 (Correções Finais)
+# ==============================================================================
+if 'exclusoes_confirmadas' not in st.session_state:
+    st.session_state['exclusoes_confirmadas'] = set()
+
+def realizar_auditoria_dados(df_input, colunas_numericas):
+    relatorio_outliers = []
+    
+    for col in colunas_numericas:
+        if not np.issubdtype(df_input[col].dtype, np.number): continue
+            
+        dados_limpos = df_input[col].dropna()
+        if len(dados_limpos) < 5: continue 
+        
+        Q1 = dados_limpos.quantile(0.25)
+        Q3 = dados_limpos.quantile(0.75)
+        IQR = Q3 - Q1
+        
+        cerca_baixa = Q1 - 1.5 * IQR
+        cerca_alta = Q3 + 1.5 * IQR
+        cerca_extrema_alta = Q3 + 3.0 * IQR
+        
+        outliers = dados_limpos[(dados_limpos < cerca_baixa) | (dados_limpos > cerca_alta)]
+        
+        for idx, valor in outliers.items():
+            recomendacao = "Manter (Verificar)" 
+            tipo_alerta = "⚠️ Atenção"
+            
+            if valor < 0: 
+                recomendacao = "❌ REMOVER (Negativo)"
+                tipo_alerta = "⛔ Erro Crítico"
+            elif valor > cerca_extrema_alta:
+                recomendacao = "❌ REMOVER (Provável Erro)"
+                tipo_alerta = "⛔ Extremo"
+            else:
+                recomendacao = "👀 VERIFICAR (Pode ser Real)"
+                tipo_alerta = "⚠️ Variação Alta"
+
+            ctx = f"Linha {idx}"
+            cols_id = [c for c in df_input.columns if c in ['Tratamento', 'Genotipo', 'Bloco', 'Repeticao', 'Local']]
+            if cols_id:
+                vals_id = [str(df_input.loc[idx, c]) for c in cols_id]
+                ctx = " | ".join(vals_id)
+            
+            relatorio_outliers.append({
+                "ID_Unico": idx,
+                "Variável": col,
+                "Contexto": ctx,
+                "Valor Lido": valor,
+                "Esperado (Faixa)": f"{cerca_baixa:.1f} a {cerca_alta:.1f}",
+                "Diagnóstico": tipo_alerta,
+                "Sugestão": recomendacao, 
+                "Remover?": False
+            })
+            
+    return pd.DataFrame(relatorio_outliers)
+
+if modo_app == "📊 Análise Estatística" and st.session_state.get('processando', False):
+    
+    if st.session_state['exclusoes_confirmadas']:
+        for idx_ex, col_ex in st.session_state['exclusoes_confirmadas']:
+            if idx_ex in df.index and col_ex in df.columns:
+                df.at[idx_ex, col_ex] = np.nan
+        
+    if 'lista_resps' in locals() and lista_resps:
+        df_auditoria = realizar_auditoria_dados(df, lista_resps)
+        
+        if not df_auditoria.empty:
+            st.markdown("---")
+            # 1. ALERTA VERMELHO EM CAIXA ALTA
+            st.error(f"🕵️ **AUDITORIA DE DADOS:** Encontramos {len(df_auditoria)} valores fora do padrão. Analise com cuidado.")
+            
+            with st.expander("🔍 Visualizar e Limpar Dados Suspeitos", expanded=True):
+                
+                # 2. GUIA DE DECISÃO (Ícone Único e Espaçamento Corrigido)
+                st.warning("""
+                ### PARE E LEIA ANTES DE REMOVER!
+                A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
+                
+                * ✅ **QUANDO MANTER (Não Marcar):**
+                    * Se for uma **variação biológica real** (Ex: Uma planta que cresceu muito mais que as outras por genética).
+                    * Se o dado, embora alto/baixo, é **fisicamente possível**.
+                    * *Dica:* Outliers reais são descobertas científicas. Não jogue fora!
+                
+                \n
+                
+                * ❌ **QUANDO REMOVER (Marcar):**
+                    * **Erros de Digitação:** (Ex: Digitou 2000 em vez de 200).
+                    * **Erros de Coleta:** (Ex: Planta morreu, quebrou, foi comida).
+                    * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
+                """, icon="⚠️")
+
+                # METODOLOGIA
+                st.info("""
+                **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). 
+                Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
+                """)
+                
+                st.markdown("---")
+
+                # TÉCNICA PARA OCULTAR ID_UNICO
+                df_auditoria.set_index("ID_Unico", inplace=True)
+
+                # 4. REORDENAÇÃO DE COLUNAS (Checkbox no Final)
+                # Ordem solicitada: Diagnostico, Sugestao, Contexto, Variável, Valor Lido, Esperado, Confirmar
+                cols_ordem = ["Diagnóstico", "Sugestão", "Contexto", "Variável", "Valor Lido", "Esperado (Faixa)", "Remover?"]
+                df_auditoria = df_auditoria[cols_ordem]
+
+                df_editor = st.data_editor(
+                    df_auditoria,
+                    column_config={
+                        "Remover?": st.column_config.CheckboxColumn(
+                            "Confirmar Remoção",
+                            help="Marque APENAS se tiver certeza que é um ERRO.",
+                            default=False,
+                        ),
+                        "Sugestão": st.column_config.TextColumn(
+                            "Sugestão", 
+                            help="Baseado na distância estatística.",
+                            width="medium"
+                        ),
+                        "Valor Lido": st.column_config.NumberColumn(format="%.4f"),
+                        "ID_Unico": st.column_config.Column(disabled=True, width="small"),
+                    },
+                    disabled=["Variável", "Contexto", "Valor Lido", "Diagnóstico", "Esperado (Faixa)", "Sugestão"],
+                    hide_index=True, 
+                    key="editor_outliers"
+                )
+                
+                col_btn1, col_btn2 = st.columns([1, 4])
+                with col_btn1:
+                    if st.button("🧹 Aplicar Limpeza", type="primary"):
+                        linhas_para_remover = df_editor[df_editor["Remover?"] == True]
+                        if not linhas_para_remover.empty:
+                            count_rem = 0
+                            for id_linha, row in linhas_para_remover.iterrows():
+                                st.session_state['exclusoes_confirmadas'].add((id_linha, row['Variável']))
+                                count_rem += 1
+                            st.toast(f"✅ {count_rem} valores removidos! Recalculando...", icon="🧹")
+                            st.rerun()
+                        else:
+                            st.toast("Nenhuma alteração selecionada.", icon="ℹ️")
+                
+                with col_btn2:
+                     if st.session_state['exclusoes_confirmadas']:
+                        if st.button("↩️ Desfazer Todas as Exclusões"):
+                            st.session_state['exclusoes_confirmadas'] = set()
+                            st.rerun()
+        else:
+            st.toast("Auditoria: Dados limpos! Nenhum outlier grave detectado.", icon="✨")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 13-B
+# ==============================================================================
+
+
+# ==============================================================================
+# 📂 BLOCO 14: Execução Principal - Setup, Outliers e Inicialização (INTEGRADO)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
@@ -1591,6 +1828,120 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     st.info(f"🔄 **Transformação Ativa:** {transf_atual} (Coluna: {col_resp})")
                 
                 st.markdown(f"### Análise de: **{col_resp}**")
+
+                # ==============================================================================
+                # 🕵️ GESTÃO DE OUTLIERS (BLOCO 14.1 INTEGRADO)
+                # ==============================================================================
+                # Define a coluna de tratamento para este contexto
+                col_trat = col_combo
+
+                # 1. Inicialização da Memória de Exclusão (Lixeira)
+                key_outliers = f"outliers_removidos_{col_resp}_{i}"
+                if key_outliers not in st.session_state:
+                    st.session_state[key_outliers] = []
+
+                # 2. Detecção Estatística (IQR)
+                Q1 = df_proc[col_resp].quantile(0.25)
+                Q3 = df_proc[col_resp].quantile(0.75)
+                IQR = Q3 - Q1
+                limite_inferior = Q1 - 1.5 * IQR
+                limite_superior = Q3 + 1.5 * IQR
+
+                # Identifica quem está fora
+                mask_outliers = (df_proc[col_resp] < limite_inferior) | (df_proc[col_resp] > limite_superior)
+                df_outliers_detectados = df_proc[mask_outliers].copy()
+                
+                # Separa quem é novo (Ativo) e quem já foi removido
+                indices_removidos = st.session_state[key_outliers]
+                outliers_ativos = df_outliers_detectados.loc[~df_outliers_detectados.index.isin(indices_removidos)]
+                
+                # --- LÓGICA DE EXIBIÇÃO PERSISTENTE ---
+                # Mostra se houver outliers ativos OU se houver itens removidos (para restaurar)
+                if not outliers_ativos.empty or len(indices_removidos) > 0:
+                    
+                    st.markdown("---")
+                    # Título de Alerta
+                    if not outliers_ativos.empty:
+                        st.error(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
+                    else:
+                        st.success(f"AUDITORIA DE DADOS: Dados limpos! ({len(indices_removidos)} valores removidos).")
+
+                    with st.expander("🕵️ Gerenciar Outliers (Limpeza e Restauração)", expanded=True):
+                        tab_clean, tab_restore = st.tabs(["🧹 Limpar Novos", "♻️ Restaurar Removidos"])
+                        
+                        # --- ABA 1: LIMPEZA ---
+                        with tab_clean:
+                            if not outliers_ativos.empty:
+                                st.info(f"**Metodologia (IQR):** Valores considerados extremos são menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}**.")
+                                
+                                df_show = outliers_ativos[[col_trat, col_resp]].copy()
+                                df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo' if x < limite_inferior else 'Muito Alto')
+                                df_show['Sugestao'] = 'Verificar Erro'
+                                df_show['Contexto'] = 'Extremo'
+                                df_show['Variável'] = col_resp
+                                df_show['Valor Lido'] = df_show[col_resp]
+                                df_show['Esperado (Faixa)'] = f"{limite_inferior:.2f} a {limite_superior:.2f}"
+                                df_show['Confirmar Remoção'] = False 
+
+                                cols_order = ['Diagnostico', 'Sugestao', 'Contexto', 'Variável', 'Valor Lido', 'Esperado (Faixa)', 'Confirmar Remoção']
+                                
+                                edited_df = st.data_editor(
+                                    df_show[cols_order],
+                                    column_config={
+                                        "Confirmar Remoção": st.column_config.CheckboxColumn(
+                                            "Remover?",
+                                            help="Marque para excluir este dado da análise",
+                                            default=False,
+                                        )
+                                    },
+                                    disabled=['Diagnostico', 'Sugestao', 'Contexto', 'Variável', 'Valor Lido', 'Esperado (Faixa)'],
+                                    hide_index=False,
+                                    key=f"editor_out_{col_resp}_{i}"
+                                )
+
+                                to_remove = edited_df[edited_df['Confirmar Remoção'] == True].index.tolist()
+                                if to_remove:
+                                    if st.button(f"🗑️ Remover {len(to_remove)} Selecionados", key=f"btn_del_{col_resp}_{i}", type="primary"):
+                                        st.session_state[key_outliers].extend(to_remove)
+                                        st.rerun()
+                            else:
+                                st.write("✅ Nenhum outlier ativo no momento.")
+
+                        # --- ABA 2: RESTAURAÇÃO ---
+                        with tab_restore:
+                            if len(indices_removidos) > 0:
+                                st.warning("Estes dados foram excluídos da análise. Selecione para restaurar.")
+                                df_removidos = df_proc.loc[indices_removidos, [col_trat, col_resp]]
+                                df_removidos['Restaurar'] = False
+                                
+                                restore_editor = st.data_editor(
+                                    df_removidos,
+                                    column_config={
+                                        "Restaurar": st.column_config.CheckboxColumn("Trazer de Volta?", default=False)
+                                    },
+                                    key=f"editor_restore_{col_resp}_{i}"
+                                )
+                                
+                                to_restore = restore_editor[restore_editor['Restaurar'] == True].index.tolist()
+                                c_r1, c_r2 = st.columns(2)
+                                with c_r1:
+                                    if to_restore:
+                                        if st.button(f"♻️ Restaurar {len(to_restore)} Itens", key=f"btn_res_{col_resp}_{i}"):
+                                            st.session_state[key_outliers] = [x for x in st.session_state[key_outliers] if x not in to_restore]
+                                            st.rerun()
+                                with c_r2:
+                                    if st.button("♻️ Restaurar TUDO", key=f"btn_res_all_{col_resp}_{i}"):
+                                        st.session_state[key_outliers] = []
+                                        st.rerun()
+                            else:
+                                st.write("A lixeira está vazia.")
+
+                # 3. FILTRAGEM FINAL DO DATAFRAME (Aplica a exclusão ANTES da análise)
+                if st.session_state[key_outliers]:
+                    df_proc = df_proc.drop(index=st.session_state[key_outliers])
+                    st.toast(f"Análise rodando sem {len(st.session_state[key_outliers])} outliers.", icon="🧹")
+                # ==============================================================================
+
                 
                 # --- 1. EXECUÇÃO DOS CÁLCULOS ESTATÍSTICOS ---
                 res_analysis = {}
@@ -1733,6 +2084,25 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 st.markdown("---")
                 st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
                 st.markdown(gerar_tabela_diagnostico(p_shap, p_bart, p_lev))
+                
+                # --- NOVO: VISUALIZAÇÃO DOS RESÍDUOS ---
+                with st.expander("🔍 Ver Gráficos de Diagnóstico (QQ-Plot e Resíduos)", expanded=False):
+                    if res_model is not None:
+                        try:
+                            # Chama a função que criamos no Bloco 06
+                            fig_qq, fig_res = plotar_diagnostico_residuos(res_model)
+                            
+                            c_diag1, c_diag2 = st.columns(2)
+                            with c_diag1:
+                                st.plotly_chart(fig_qq, use_container_width=True)
+                                
+                                st.caption("👉 **QQ-Plot:** Se os pontos azuis seguem a linha vermelha, os dados são Normais.")
+                            
+                            with c_diag2:
+                                st.plotly_chart(fig_res, use_container_width=True)
+                                st.caption("👉 **Vs Preditos:** Se os pontos estão espalhados aleatoriamente (sem formar funil), há Homogeneidade.")
+                        except Exception as e:
+                            st.error(f"Não foi possível gerar gráficos de resíduos: {e}")
 
                 is_nan_shap = pd.isna(p_shap)
                 is_nan_bart = pd.isna(p_bart)
@@ -2920,8 +3290,141 @@ if st.session_state.get('processando', False):
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
-   
-   
+
+
+# ==============================================================================
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - ROBUSTO
+# ==============================================================================
+# Flag de controle
+HAS_SKLEARN = False
+
+try:
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    HAS_SKLEARN = True
+except ImportError:
+    import subprocess
+    import sys
+    # Tenta instalar automaticamente, mas PROTEGE contra erro de permissão
+    try:
+        with st.spinner("📦 Biblioteca 'scikit-learn' ausente. Tentando instalar..."):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
+            
+            # Tenta importar novamente após a instalação
+            from sklearn.decomposition import PCA
+            from sklearn.preprocessing import StandardScaler
+            HAS_SKLEARN = True
+            st.toast("✅ Biblioteca instalada! Carregando PCA...", icon="💾")
+    except Exception as e:
+        # Se falhar (ex: erro de permissão no Linux), apenas marca como False e segue o baile
+        HAS_SKLEARN = False
+        if EXIBIR_LOGS: print(f"⚠️ Falha na auto-instalação do scikit-learn: {e}")
+
+# Só roda se tivermos dados e variáveis suficientes
+if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
+    
+    st.markdown("---")
+    st.header("🧬 Análise de Componentes Principais (PCA)")
+    
+    # SE A BIBLIOTECA NÃO ESTIVER DISPONÍVEL, MOSTRA AVISO E PARA O BLOCO AQUI
+    if not HAS_SKLEARN:
+        st.warning("⚠️ **Módulo PCA Indisponível:** A biblioteca `scikit-learn` não foi encontrada e a instalação automática falhou (possível erro de permissão).")
+        st.info("👉 **Solução Manual:** Pare o script e rode no terminal: `pip install scikit-learn`")
+    
+    else:
+        # --- CÓDIGO DO PCA (SÓ EXECUTA SE HAS_SKLEARN == TRUE) ---
+        with st.expander("ℹ️ O que é isso?", expanded=False):
+            st.info("""
+            O PCA reduz a dimensionalidade dos dados. 
+            - **Pontos:** Representam os Tratamentos. Pontos próximos indicam comportamento similar.
+            - **Vetores (Setas):** Representam as Variáveis. Setas na mesma direção indicam alta correlação positiva.
+            """)
+
+        # Configuração
+        c_pca1, c_pca2 = st.columns(2)
+        with c_pca1:
+            col_rotulo_pca = st.selectbox("Rótulo dos Pontos (Tratamento)", cols_trats, key="pca_lbl")
+        with c_pca2:
+            col_cor_pca = st.selectbox("Colorir por (Opcional)", [None] + cols_trats + ([col_local] if 'col_local' in locals() else []), key="pca_cor")
+
+        # Botão para Executar
+        if st.button("🔄 Gerar Biplot PCA", type="primary"):
+            
+            # 1. Preparação dos Dados
+            df_pca = df_corr_input.dropna(subset=vars_corr).copy()
+            
+            # Agrupar médias por tratamento
+            df_medias_pca = df_pca.groupby(col_rotulo_pca)[vars_corr].mean().reset_index()
+            
+            X = df_medias_pca[vars_corr]
+            
+            # 2. Padronização
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            
+            # 3. Modelo PCA
+            pca = PCA(n_components=2)
+            components = pca.fit_transform(X_scaled)
+            
+            # Variância Explicada
+            var_expl = pca.explained_variance_ratio_ * 100
+            
+            # 4. Plotagem (Biplot Manual com Plotly)
+            import plotly.graph_objects as go
+            fig_pca = go.Figure()
+            
+            # A. Adicionar Pontos (Tratamentos)
+            cor_points = df_medias_pca[col_cor_pca] if col_cor_pca and col_cor_pca in df_medias_pca.columns else None
+            
+            fig_pca.add_trace(go.Scatter(
+                x=components[:, 0], 
+                y=components[:, 1],
+                mode='markers+text',
+                text=df_medias_pca[col_rotulo_pca],
+                textposition="top center",
+                marker=dict(size=12, color=cor_points if cor_points is not None else '#2E86C1', showscale=True if cor_points is not None else False),
+                name="Tratamentos"
+            ))
+            
+            # B. Adicionar Vetores (Variáveis)
+            loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
+            
+            escala = 1.0
+            max_pt = np.max(np.abs(components))
+            max_vec = np.max(np.abs(loadings))
+            if max_vec > 0: escala = max_pt / max_vec
+            
+            for i, feature in enumerate(vars_corr):
+                fig_pca.add_trace(go.Scatter(
+                    x=[0, loadings[i, 0] * escala],
+                    y=[0, loadings[i, 1] * escala],
+                    mode='lines+markers',
+                    marker=dict(size=5, symbol='arrow-bar-up', angleref="previous"),
+                    line=dict(color='red', width=2),
+                    name=f"Vetor: {feature}",
+                    hoverinfo='name'
+                ))
+                fig_pca.add_annotation(
+                    x=loadings[i, 0] * escala, y=loadings[i, 1] * escala,
+                    text=feature, showarrow=False, font=dict(color="red", size=12),
+                    yshift=10
+                )
+
+            fig_pca.update_layout(
+                title=f"Biplot PCA (Total Explicado: {sum(var_expl):.2f}%)",
+                xaxis_title=f"PC1 ({var_expl[0]:.2f}%)",
+                yaxis_title=f"PC2 ({var_expl[1]:.2f}%)",
+                template="plotly_white",
+                height=600,
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig_pca, use_container_width=True)
+# ==============================================================================
+# 🏁 FIM DO BLOCO 21-B
+# ==============================================================================
+
+
 # ==============================================================================
 # 📂 BLOCO 22: Gerador de Relatório Completo (HTML Download)
 # ==============================================================================
