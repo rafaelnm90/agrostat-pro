@@ -2596,7 +2596,240 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Gerador de Relatório Completo (HTML Download)
+# 📂 BLOCO 21: Análise de Correlação (Multivariada)
+# ==============================================================================
+# Função auxiliar para o menu de personalização do Heatmap
+def mostrar_editor_heatmap(key_prefix):
+    """
+    Menu para personalizar cores, textos e bordas do Heatmap.
+    Encapsulado em formulário.
+    """
+    with st.expander("✏️ Personalizar Gráfico de Correlação", expanded=False):
+        with st.form(key=f"form_{key_prefix}"):
+            st.markdown("##### 🎨 Aparência Geral")
+            c1, c2, c3 = st.columns(3)
+            
+            with c1:
+                st.markdown("**Cores do Mapa (Gradiente)**")
+                cor_neg = st.color_picker("Valor -1 (Negativo)", "#D73027", key=f"{key_prefix}_cneg")
+                cor_zero = st.color_picker("Valor 0 (Neutro)", "#FFFFFF", key=f"{key_prefix}_czero")
+                cor_pos = st.color_picker("Valor 1 (Positivo)", "#4575B4", key=f"{key_prefix}_cpos")
+                
+            with c2:
+                st.markdown("**Fundo e Eixos**")
+                cor_fundo = st.color_picker("Fundo do Gráfico", "#FFFFFF", key=f"{key_prefix}_cbg")
+                cor_eixos = st.color_picker("Cor Eixos/Título/Legenda", "#000000", key=f"{key_prefix}_ceixos")
+                fam_fonte = st.selectbox("Fonte", ["Arial", "Verdana", "Times New Roman", "Courier New"], key=f"{key_prefix}_font")
+                
+            with c3:
+                st.markdown("**Estrutura**")
+                titulo_custom = st.text_input("Título", "Matriz de Correlação", key=f"{key_prefix}_tit")
+                estilo_borda = st.selectbox("Bordas", ["Caixa (Espelhado)", "Apenas L (Eixos)", "Sem Bordas"], key=f"{key_prefix}_borda")
+                c3a, c3b = st.columns(2)
+                with c3a: mostrar_ticks = st.checkbox("Ticks", False, key=f"{key_prefix}_ticks")
+                with c3b: eixos_negrito = st.checkbox("Negrito", False, key=f"{key_prefix}_boldax")
+
+            st.markdown("---")
+            st.markdown("##### 🔢 Valores Internos (Texto nas Células)")
+            
+            c4, c5, c6 = st.columns(3)
+            with c4:
+                modo_cor_txt = st.selectbox("Modo de Cor", 
+                                            ["Cor Única", "Condicional (Pos/Neg/Zero)"], 
+                                            key=f"{key_prefix}_modotxt")
+                tamanho_fonte_val = st.number_input("Tamanho Fonte", 8, 24, 12, key=f"{key_prefix}_fsize")
+                
+            with c5:
+                val_negrito = st.checkbox("Valores em Negrito", False, key=f"{key_prefix}_boldval")
+            
+            cores_texto = {}
+            with c6:
+                if modo_cor_txt == "Cor Única":
+                    cores_texto['unica'] = st.color_picker("Cor Texto Única", "#000000", key=f"{key_prefix}_ctxtuni")
+                else:
+                    c6a, c6b = st.columns(2)
+                    with c6a:
+                        cores_texto['pos'] = st.color_picker("Txt Positivo", "#0000FF", key=f"{key_prefix}_ctxtpos")
+                        cores_texto['neg'] = st.color_picker("Txt Negativo", "#FF0000", key=f"{key_prefix}_ctxtneg")
+                    with c6b:
+                        cores_texto['zero'] = st.color_picker("Txt Zero", "#AAAAAA", key=f"{key_prefix}_ctxtzero")
+
+            st.markdown("---")
+            submit_btn = st.form_submit_button("🔄 Atualizar Gráfico de Correlação")
+
+        return {
+            "cor_mapa": [cor_neg, cor_zero, cor_pos],
+            "cor_fundo": cor_fundo,
+            "titulo": titulo_custom,
+            "fonte": fam_fonte,
+            "cor_eixos": cor_eixos,
+            "eixos_negrito": eixos_negrito,
+            "estilo_borda": estilo_borda,
+            "ticks": mostrar_ticks,
+            "modo_cor_txt": modo_cor_txt,
+            "tamanho_fonte_val": tamanho_fonte_val,
+            "val_negrito": val_negrito,
+            "cores_texto": cores_texto
+        }
+
+# --- LÓGICA PRINCIPAL DO BLOCO ---
+cols_numericas_corr = df_analise.select_dtypes(include=[np.number]).columns.tolist()
+vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
+
+if len(vars_corr) > 1:
+    st.markdown("---")
+    st.header("🔗 Análise de Correlação entre Variáveis")
+    
+    # 1. Menu de Configuração
+    cfg = mostrar_editor_heatmap("corr_main")
+    
+    # Lógica de Seleção do Método
+    metodo_corr = st.radio(
+        "Método de Correlação:", 
+        ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
+        horizontal=True,
+        index=1 # Spearman selecionado por padrão para segurança
+    )
+    metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
+
+    # --- AVISO EDUCATIVO (ORIENTAÇÃO AO USUÁRIO) ---
+    if metodo == "pearson":
+        st.warning("""
+        ⚠️ **ATENÇÃO:** O método de **Pearson** é sensível a dados que não seguem distribuição normal. 
+        Se o seu conjunto de dados contiver variáveis **Não-Paramétricas** (ou uma mistura de Paramétricas e Não-Paramétricas), 
+        o uso de Pearson pode gerar correlações imprecisas. Na dúvida ou em dados mistos, prefira **Spearman**.
+        """)
+    else:
+        st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
+
+    # 2. Cálculo da Matriz
+    try:
+        df_corr = df_analise[vars_corr].corr(method=metodo)
+        
+        # 3. Definição da Escala de Cores do Fundo
+        colorscale_custom = [
+            [0.0, cfg['cor_mapa'][0]], # -1
+            [0.5, cfg['cor_mapa'][1]], # 0
+            [1.0, cfg['cor_mapa'][2]]  # 1
+        ]
+        
+        # 4. PREPARAÇÃO DO TEXTO CUSTOMIZADO (HTML)
+        custom_text = []
+        vals = df_corr.values
+        
+        for i in range(len(vals)):
+            row_text = []
+            for val in vals[i]:
+                # Define a cor
+                c_code = "#000000"
+                if cfg['modo_cor_txt'] == "Cor Única":
+                    c_code = cfg['cores_texto']['unica']
+                else:
+                    if val > 0.001: c_code = cfg['cores_texto']['pos']
+                    elif val < -0.001: c_code = cfg['cores_texto']['neg']
+                    else: c_code = cfg['cores_texto']['zero']
+                
+                # Define Negrito
+                val_fmt = f"{val:.2f}"
+                if cfg['val_negrito']:
+                    val_fmt = f"<b>{val_fmt}</b>"
+                
+                # Cria o HTML final para a célula
+                cell_html = f"<span style='color:{c_code}'>{val_fmt}</span>"
+                row_text.append(cell_html)
+            custom_text.append(row_text)
+
+        # 5. Geração do Gráfico (Sem text_auto)
+        fig_corr = px.imshow(
+            df_corr,
+            text_auto=False, # Desligamos o auto para usar nosso custom_text
+            aspect="auto",
+            color_continuous_scale=colorscale_custom,
+            zmin=-1, zmax=1
+        )
+        
+        # 6. Personalização Avançada (Layout)
+        mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
+        show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
+        tick_mode = "outside" if cfg['ticks'] else ""
+        weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
+        title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
+        
+        fig_corr.update_layout(
+            title=dict(
+                text=title_text,
+                x=0.5,
+                font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])
+            ),
+            height=500,
+            paper_bgcolor=cfg['cor_fundo'], 
+            plot_bgcolor=cfg['cor_fundo'],
+            font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
+            xaxis=dict(
+                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
+                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
+                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
+            ),
+            yaxis=dict(
+                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
+                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
+                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
+            )
+        )
+        
+        # Atualização da Legenda Lateral
+        fig_corr.update_coloraxes(
+            colorbar=dict(
+                tickfont=dict(
+                    family=cfg['fonte'],
+                    color=cfg['cor_eixos'], 
+                    size=cfg['tamanho_fonte_val'], 
+                    weight=weight_eixos
+                ),
+                title=dict(text="")
+            )
+        )
+
+        # 7. Injeção do Texto HTML
+        fig_corr.update_traces(
+            text=custom_text, 
+            texttemplate="%{text}",
+            textfont=dict(
+                family=cfg['fonte'],
+                size=cfg['tamanho_fonte_val']
+            )
+        )
+
+        # --- EXIBIÇÃO FINAL ---
+        st.plotly_chart(fig_corr, use_container_width=True)
+        st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+
+        # --- NOTA DE RODAPÉ ADAPTATIVA ---
+        st.markdown(f"""
+        <div style="
+            font-family: 'Times New Roman', Times, serif; 
+            font-size: 0.9em; 
+            border-top: 1px solid rgba(128, 128, 128, 0.5); 
+            margin-top: 10px; 
+            padding-top: 8px; 
+            text-align: justify;">
+            <b>Nota:</b> A matriz acima apresenta os coeficientes de correlação ({'<i>r</i> de Pearson' if metodo == 'pearson' else '<i>ρ</i> de Spearman'}) 
+            entre as variáveis analisadas. O coeficiente varia no intervalo <b>[-1, +1]</b>. 
+            Valores próximos a <b>+1</b> indicam forte associação linear positiva (proporcionalidade direta), 
+            enquanto valores próximos a <b>-1</b> indicam forte associação linear negativa (proporcionalidade inversa). 
+            Coeficientes próximos a <b>0</b> sugerem ausência de correlação linear significativa.
+        </div>
+        """, unsafe_allow_html=True)
+            
+    except Exception as e:
+        st.error(f"Não foi possível calcular a correlação: {e}")
+# ==============================================================================
+# 🏁 FIM DO BLOCO 21
+# ==============================================================================
+   
+   
+# ==============================================================================
+# 📂 BLOCO 22: Gerador de Relatório Completo (HTML Download)
 # ==============================================================================
     # ATENÇÃO: Esta parte fica FORA do loop (alinhada à esquerda do IF principal)
     
@@ -2677,12 +2910,12 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
             mime="text/html"
         )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 21
+# 🏁 FIM DO BLOCO 22
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Planejamento (Sorteio Experimental)
+# 📂 BLOCO 23: Planejamento (Sorteio Experimental)
 # ==============================================================================
 import random
 import pandas as pd
@@ -2873,11 +3106,11 @@ if modo_app == "🎲 Sorteio Experimental":
                 mime="text/csv"
             )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 22
+# 🏁 FIM DO BLOCO 23
 # ==============================================================================
 
 # ==============================================================================
-# 📂 BLOCO 23: Rodapé e Créditos (GLOBAL)
+# 📂 BLOCO 24: Rodapé e Créditos (GLOBAL)
 # ==============================================================================
 st.markdown("---")
 st.markdown(
@@ -2891,5 +3124,5 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ==============================================================================
-# 🏁 FIM DO BLOCO 23
+# 🏁 FIM DO BLOCO 24
 # ==============================================================================
