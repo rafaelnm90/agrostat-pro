@@ -1510,13 +1510,12 @@ elif modo_app == "🎲 Sorteio Experimental":
 
 
 # ==============================================================================
-# 📂 BLOCO 14: Execução Principal - Setup e Inicialização (BLINDADO)
+# 📂 BLOCO 14: Execução Principal - Setup e Inicialização (DIAGNÓSTICO RIGOROSO)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
 if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
     
     # --- VERIFICAÇÕES DE SEGURANÇA (Evita NameError) ---
-    # Verifica se as variáveis existem antes de testar se estão vazias
     erro_vars = False
     
     if 'lista_resps' not in locals() or not lista_resps:
@@ -1530,7 +1529,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
     # Só prossegue se não houve erro nas variáveis
     if not erro_vars:
         # --- 0. APLICAÇÃO INTELIGENTE DE RENOMEAÇÃO ---
-        # Garante que df_analise existe, senão usa df
         if 'df_analise' not in locals():
             if 'df' in locals():
                 df_analise = df.copy()
@@ -1631,10 +1629,43 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     if razao and razao > 7: 
                         st.error(f"⚠️ **Violação de Homogeneidade (MSE):** Razão {razao:.2f} > 7. A variância entre os locais é muito discrepante.")
 
-                # ALERTA RÁPIDO
+                # ==============================================================================
+                # 🚨 PAINEL DE ALERTAS (PADRÃO VERMELHO/ERRO PARA TUDO QUE FOR RUIM)
+                # ==============================================================================
                 cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
-                if cv_val <= 20: st.success(f"✅ **CV Adequado ({cv_val:.2f}%):** Boa precisão.")
-                else: st.error(f"⚠️ **CV Alto ({cv_val:.2f}%):** Baixa precisão.")
+                
+                # Container para agrupar avisos (Visualmente mais limpo)
+                with st.container():
+                    # 1. Alerta de CV (Agora sempre Vermelho se > 20)
+                    if cv_val > 30:
+                        st.error(f"⚠️ **CV Crítico ({cv_val:.2f}%):** Precisão experimental muito baixa. Dados inconsistentes.")
+                    elif cv_val > 20:
+                        st.error(f"⚠️ **CV Alto ({cv_val:.2f}%):** Precisão experimental reduzida. Atenção na interpretação.")
+                    
+                    # 2. Alerta de ANOVA (P-valor)
+                    if p_final_trat > 0.05:
+                        st.error(f"⚠️ **ANOVA Não Significativa (P={p_final_trat:.4f}):** Não houve diferença estatística entre os tratamentos.")
+
+                    # 3. Alerta de R² (Agora sempre Vermelho se < 0.70)
+                    r2_val = extras.get('r2', 0)
+                    if r2_val < 0.50:
+                        st.error(f"⚠️ **R² Crítico ({r2_val:.2f}):** O modelo não se ajustou aos dados (Explica < 50%).")
+                    elif r2_val < 0.70:
+                        st.error(f"⚠️ **R² Regular ({r2_val:.2f}):** O ajuste do modelo está abaixo do ideal (< 0.70).")
+
+                    # 4. Alerta de Acurácia Seletiva (Agora sempre Vermelho se < 0.70)
+                    ac_val = extras.get('acuracia', 0)
+                    if ac_val > 0 and ac_val < 0.70:
+                        st.error(f"⚠️ **Acurácia Baixa ({ac_val:.2f}):** Baixa confiabilidade para seleção de genótipos.")
+
+                    # 5. Alerta de Herdabilidade (Agora sempre Vermelho se < 0.50)
+                    h2_val = extras.get('h2', 0)
+                    if h2_val > 0 and h2_val < 0.50:
+                        st.error(f"⚠️ **Herdabilidade Baixa ({h2_val:.2f}):** Forte influência ambiental sobre a característica.")
+                
+                # Feedback Positivo Geral (Só aparece se estiver tudo "verde")
+                if cv_val <= 20 and p_final_trat < 0.05 and r2_val >= 0.70:
+                    st.success("✅ **Excelente:** Dados com alta precisão e modelo bem ajustado.")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 14
 # ==============================================================================
