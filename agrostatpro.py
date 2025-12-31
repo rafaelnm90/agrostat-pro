@@ -1649,162 +1649,6 @@ elif modo_app == "🎲 Sorteio Experimental":
 
 
 # ==============================================================================
-# 📂 BLOCO 13-B: Auditoria de Qualidade de Dados (Detecção de Outliers) - V9 (Correções Finais)
-# ==============================================================================
-if 'exclusoes_confirmadas' not in st.session_state:
-    st.session_state['exclusoes_confirmadas'] = set()
-
-def realizar_auditoria_dados(df_input, colunas_numericas):
-    relatorio_outliers = []
-    
-    for col in colunas_numericas:
-        if not np.issubdtype(df_input[col].dtype, np.number): continue
-            
-        dados_limpos = df_input[col].dropna()
-        if len(dados_limpos) < 5: continue 
-        
-        Q1 = dados_limpos.quantile(0.25)
-        Q3 = dados_limpos.quantile(0.75)
-        IQR = Q3 - Q1
-        
-        cerca_baixa = Q1 - 1.5 * IQR
-        cerca_alta = Q3 + 1.5 * IQR
-        cerca_extrema_alta = Q3 + 3.0 * IQR
-        
-        outliers = dados_limpos[(dados_limpos < cerca_baixa) | (dados_limpos > cerca_alta)]
-        
-        for idx, valor in outliers.items():
-            recomendacao = "Manter (Verificar)" 
-            tipo_alerta = "⚠️ Atenção"
-            
-            if valor < 0: 
-                recomendacao = "❌ REMOVER (Negativo)"
-                tipo_alerta = "⛔ Erro Crítico"
-            elif valor > cerca_extrema_alta:
-                recomendacao = "❌ REMOVER (Provável Erro)"
-                tipo_alerta = "⛔ Extremo"
-            else:
-                recomendacao = "👀 VERIFICAR (Pode ser Real)"
-                tipo_alerta = "⚠️ Variação Alta"
-
-            ctx = f"Linha {idx}"
-            cols_id = [c for c in df_input.columns if c in ['Tratamento', 'Genotipo', 'Bloco', 'Repeticao', 'Local']]
-            if cols_id:
-                vals_id = [str(df_input.loc[idx, c]) for c in cols_id]
-                ctx = " | ".join(vals_id)
-            
-            relatorio_outliers.append({
-                "ID_Unico": idx,
-                "Variável": col,
-                "Contexto": ctx,
-                "Valor Lido": valor,
-                "Esperado (Faixa)": f"{cerca_baixa:.1f} a {cerca_alta:.1f}",
-                "Diagnóstico": tipo_alerta,
-                "Sugestão": recomendacao, 
-                "Remover?": False
-            })
-            
-    return pd.DataFrame(relatorio_outliers)
-
-if modo_app == "📊 Análise Estatística" and st.session_state.get('processando', False):
-    
-    if st.session_state['exclusoes_confirmadas']:
-        for idx_ex, col_ex in st.session_state['exclusoes_confirmadas']:
-            if idx_ex in df.index and col_ex in df.columns:
-                df.at[idx_ex, col_ex] = np.nan
-        
-    if 'lista_resps' in locals() and lista_resps:
-        df_auditoria = realizar_auditoria_dados(df, lista_resps)
-        
-        if not df_auditoria.empty:
-            st.markdown("---")
-            # 1. ALERTA VERMELHO EM CAIXA ALTA
-            st.error(f"🕵️ **AUDITORIA DE DADOS:** Encontramos {len(df_auditoria)} valores fora do padrão. Analise com cuidado.")
-            
-            with st.expander("🔍 Visualizar e Limpar Dados Suspeitos", expanded=True):
-                
-                # 2. GUIA DE DECISÃO (Ícone Único e Espaçamento Corrigido)
-                st.warning("""
-                ### PARE E LEIA ANTES DE REMOVER!
-                A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
-                
-                * ✅ **QUANDO MANTER (Não Marcar):**
-                    * Se for uma **variação biológica real** (Ex: Uma planta que cresceu muito mais que as outras por genética).
-                    * Se o dado, embora alto/baixo, é **fisicamente possível**.
-                    * *Dica:* Outliers reais são descobertas científicas. Não jogue fora!
-                
-                \n
-                
-                * ❌ **QUANDO REMOVER (Marcar):**
-                    * **Erros de Digitação:** (Ex: Digitou 2000 em vez de 200).
-                    * **Erros de Coleta:** (Ex: Planta morreu, quebrou, foi comida).
-                    * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
-                """, icon="⚠️")
-
-                # METODOLOGIA
-                st.info("""
-                **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). 
-                Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
-                """)
-                
-                st.markdown("---")
-
-                # TÉCNICA PARA OCULTAR ID_UNICO
-                df_auditoria.set_index("ID_Unico", inplace=True)
-
-                # 4. REORDENAÇÃO DE COLUNAS (Checkbox no Final)
-                # Ordem solicitada: Diagnostico, Sugestao, Contexto, Variável, Valor Lido, Esperado, Confirmar
-                cols_ordem = ["Diagnóstico", "Sugestão", "Contexto", "Variável", "Valor Lido", "Esperado (Faixa)", "Remover?"]
-                df_auditoria = df_auditoria[cols_ordem]
-
-                df_editor = st.data_editor(
-                    df_auditoria,
-                    column_config={
-                        "Remover?": st.column_config.CheckboxColumn(
-                            "Confirmar Remoção",
-                            help="Marque APENAS se tiver certeza que é um ERRO.",
-                            default=False,
-                        ),
-                        "Sugestão": st.column_config.TextColumn(
-                            "Sugestão", 
-                            help="Baseado na distância estatística.",
-                            width="medium"
-                        ),
-                        "Valor Lido": st.column_config.NumberColumn(format="%.4f"),
-                        "ID_Unico": st.column_config.Column(disabled=True, width="small"),
-                    },
-                    disabled=["Variável", "Contexto", "Valor Lido", "Diagnóstico", "Esperado (Faixa)", "Sugestão"],
-                    hide_index=True, 
-                    key="editor_outliers"
-                )
-                
-                col_btn1, col_btn2 = st.columns([1, 4])
-                with col_btn1:
-                    if st.button("🧹 Aplicar Limpeza", type="primary"):
-                        linhas_para_remover = df_editor[df_editor["Remover?"] == True]
-                        if not linhas_para_remover.empty:
-                            count_rem = 0
-                            for id_linha, row in linhas_para_remover.iterrows():
-                                st.session_state['exclusoes_confirmadas'].add((id_linha, row['Variável']))
-                                count_rem += 1
-                            st.toast(f"✅ {count_rem} valores removidos! Recalculando...", icon="🧹")
-                            st.rerun()
-                        else:
-                            st.toast("Nenhuma alteração selecionada.", icon="ℹ️")
-                
-                with col_btn2:
-                     if st.session_state['exclusoes_confirmadas']:
-                        if st.button("↩️ Desfazer Todas as Exclusões"):
-                            st.session_state['exclusoes_confirmadas'] = set()
-                            st.rerun()
-        else:
-            st.toast("Auditoria: Dados limpos! Nenhum outlier grave detectado.", icon="✨")
-# ==============================================================================
-# 🏁 FIM DO BLOCO 13-B
-# ==============================================================================
-
-
-# ==============================================================================
 # 📂 BLOCO 14: Execução Principal - Setup, Outliers e Inicialização (INTEGRADO)
 # ==============================================================================
 # TRAVA DE SEGURANÇA: Só roda se o botão foi clicado E se estivermos no modo Análise
@@ -1920,18 +1764,45 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     st.markdown("---")
                     # Título de Alerta
                     if not outliers_ativos.empty:
-                        st.error(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
+                        st.error(f"🕵️ **AUDITORIA DE DADOS:** Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
                     else:
-                        st.success(f"AUDITORIA DE DADOS: Dados limpos! ({len(indices_removidos)} valores removidos).")
+                        st.success(f"🕵️ **AUDITORIA DE DADOS:** Dados limpos! ({len(indices_removidos)} valores removidos).")
 
-                    with st.expander("🕵️ Gerenciar Outliers (Limpeza e Restauração)", expanded=True):
+                    with st.expander("🔍 Visualizar e Limpar Dados Suspeitos", expanded=True):
+                        
+                        # --- 1. AVISO AMARELO (GUIA DE DECISÃO) ---
+                        st.warning("""
+                        ### ⚠️ PARE E LEIA ANTES DE REMOVER!
+                        A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
+                        
+                        * ✅ **QUANDO MANTER (Não Marcar):**
+                            * Se for uma **variação biológica real** (Ex: Uma planta que cresceu muito mais que as outras por genética).
+                            * Se o dado, embora alto/baixo, é **fisicamente possível**.
+                            * *Dica:* Outliers reais são descobertas científicas. Não jogue fora!
+                        
+                        \n
+                        
+                        * ❌ **QUANDO REMOVER (Marcar):**
+                            * **Erros de Digitação:** (Ex: Digitou 2000 em vez de 200).
+                            * **Erros de Coleta:** (Ex: Planta morreu, quebrou, foi comida).
+                            * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
+                        """, icon="⚠️")
+
+                        # --- 2. AVISO AZUL (METODOLOGIA + VALORES ESPECÍFICOS) ---
+                        st.info(f"""
+                        **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
+                        
+                        ---
+                        **📉 Metodologia (IQR):** Valores considerados extremos são menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}**.
+                        """)
+                        
+                        st.markdown("---")
+
                         tab_clean, tab_restore = st.tabs(["🧹 Limpar Novos", "♻️ Restaurar Removidos"])
                         
                         # --- ABA 1: LIMPEZA ---
                         with tab_clean:
                             if not outliers_ativos.empty:
-                                st.info(f"**Metodologia (IQR):** Valores considerados extremos são menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}**.")
-                                
                                 df_show = outliers_ativos[[col_trat, col_resp]].copy()
                                 df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo' if x < limite_inferior else 'Muito Alto')
                                 df_show['Sugestao'] = 'Verificar Erro'
@@ -1950,7 +1821,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                             "Remover?",
                                             help="Marque para excluir este dado da análise",
                                             default=False,
-                                        )
+                                        ),
                                     },
                                     disabled=['Diagnostico', 'Sugestao', 'Contexto', 'Variável', 'Valor Lido', 'Esperado (Faixa)'],
                                     hide_index=False,
