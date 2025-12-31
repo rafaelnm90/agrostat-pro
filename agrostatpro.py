@@ -1196,10 +1196,9 @@ from patsy.contrasts import Sum
 def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=None):
     """
     Roda ANOVA Individual com Sanitização de Nomes (Compatível com Python 3.13+).
-    Substitui nomes complexos por apelidos simples (V1, V2...) durante o cálculo.
+    Substitui nomes complexos por apelidos simples (FATOR_X_SAFE) durante o cálculo.
     """
     # 1. Mapeamento Seguro (Sanitização)
-    # Cria um dicionário: {Nome_Original: Nome_Seguro}
     mapa_seguro = {}
     col_y_safe = "VAR_RESP_SAFE"
     mapa_seguro[col_resp] = col_y_safe
@@ -1215,11 +1214,9 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
         mapa_seguro[col_bloco] = bloco_safe
 
     # Cria DataFrame temporário apenas com os nomes seguros
-    # Isso elimina espaços, acentos e caracteres que quebram o Python 3.13
     df_calc = df.rename(columns=mapa_seguro).copy()
     
     # 2. Montagem da Fórmula (Sem Q(), apenas identificadores limpos)
-    # Importa Sum explicitamente para o escopo local garantir visibilidade
     from patsy.contrasts import Sum
     
     termos_trats = [f"C({ts}, Sum)" for ts in trats_safe]
@@ -1234,20 +1231,16 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     
     # 3. Execução do Modelo (Blindada)
     try:
-        # Tenta rodar com contraste Sum (Tipo III)
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
     except Exception:
-        # Fallback para contraste padrão se falhar
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
     # 4. Restauração dos Nomes Originais (Visualização)
-    # O usuário não deve ver "FATOR_0_SAFE", e sim o nome real
     novo_index = []
     for idx in anova.index:
         idx_str = str(idx)
-        # Substitui de volta os nomes seguros pelos originais
         for original, safe in mapa_seguro.items():
             if safe in idx_str:
                 # Remove estruturas do Patsy para limpar o nome visualmente
@@ -1264,17 +1257,13 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     # 5. Extração do P-valor (Busca Robusta nos nomes restaurados)
     try:
         if len(cols_trats) == 1:
-            # Procura pelo nome da coluna de tratamento no índice restaurado
             target = cols_trats[0]
-            # Filtra linhas que contém o tratamento mas não são interações complexas (se houver)
             idx_found = [ix for ix in anova.index if target in str(ix) and ":" not in str(ix)]
             if idx_found:
                 res['p_val'] = anova.loc[idx_found[0], "PR(>F)"]
             else:
                 res['p_val'] = 1.0
         else:
-            # Para fatorial, tenta pegar a interação de maior ordem
-            # Lógica simplificada: pega o último p-valor que não seja Resíduo ou Bloco
             candidatos = [ix for ix in anova.index if "Resid" not in str(ix) and "BLOCO" not in str(ix) and "Intercept" not in str(ix)]
             if candidatos:
                 res['p_val'] = anova.loc[candidatos[-1], "PR(>F)"]
@@ -1286,7 +1275,6 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     # 6. Pressupostos (Usando os dados mapeados para cálculo correto)
     res['shapiro'] = stats.shapiro(modelo.resid)
     
-    # Prepara grupos para Bartlett/Levene
     if len(trats_safe) > 1:
         grupo_combinado = df_calc[trats_safe].astype(str).agg(' + '.join, axis=1)
     else:
@@ -1305,9 +1293,8 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
 @st.cache_data(show_spinner=False)
 def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento, col_bloco=None):
     """
-    Analise Conjunta com Sanitização de Nomes (Compatível com Python 3.13+).
+    Analise Conjunta com Sanitização de Nomes.
     """
-    # 1. Mapeamento Seguro
     mapa_seguro = {}
     y_safe = "VAR_Y_SAFE"
     trat_safe = "TRAT_SAFE"
@@ -1324,7 +1311,6 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     
     from patsy.contrasts import Sum
 
-    # 2. Montagem da Fórmula
     if delineamento == 'DBC':
         termos = f"C({trat_safe}, Sum) * C({local_safe}, Sum) + C({bloco_safe}, Sum):C({local_safe}, Sum)"
     else:
@@ -1332,7 +1318,6 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
         
     formula = f"{y_safe} ~ {termos}"
     
-    # 3. Execução
     try:
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
@@ -1340,7 +1325,7 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
-    # 4. Restauração dos Nomes
+    # Restaura nomes
     novo_index = []
     for idx in anova.index:
         idx_str = str(idx)
@@ -1360,14 +1345,12 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     grupos = [g[y_safe].values for _, g in df_calc.groupby(trat_safe)]
     try: res['bartlett'] = stats.bartlett(*grupos)
     except: res['bartlett'] = (0, np.nan)
-        
     try: res['levene'] = stats.levene(*grupos, center='median')
     except: res['levene'] = (0, np.nan)
     
     res['p_trat'] = 1.0
     res['p_interacao'] = 1.0
     
-    # Busca robusta pelos P-valores nos nomes originais (já restaurados)
     for idx in anova.index:
         nome = str(idx)
         has_trat = col_trat_combo in nome
@@ -1381,13 +1364,10 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
             
     return res
 
-# --- CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
 @st.cache_data(show_spinner=False)
 def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
-    """
-    Função auxiliar que reutiliza a rodar_analise_individual (agora segura).
-    """
-    if EXIBIR_LOGS: print(f"⚖️ Verificando homogeneidade de variâncias entre locais...")
+    """Função auxiliar que reutiliza a rodar_analise_individual (agora segura)."""
+    if EXIBIR_LOGS: print(f"⚖️ Verificando homogeneidade...")
     
     locais = df[col_local].unique()
     mses = []
@@ -1395,21 +1375,14 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
     for loc in locais:
         df_loc = df[df[col_local] == loc]
         try:
-            # Chama a função individual blindada
             res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
             mses.append(res['mse'])
-        except:
-            pass 
+        except: pass 
         
     if not mses: return 0, 0, 0
-    
-    max_mse = max(mses)
-    min_mse = min(mses)
-    
+    max_mse = max(mses); min_mse = min(mses)
     if min_mse == 0: return 999, max_mse, min_mse
-    
-    razao = max_mse / min_mse
-    return razao, max_mse, min_mse
+    return max_mse / min_mse, max_mse, min_mse
 # ==============================================================================
 # 🏁 FIM DO BLOCO 11
 # ==============================================================================
@@ -2938,13 +2911,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 📂 BLOCO 21: Análise de Correlação (Multivariada) - TUDO ENCAPSULADO
 # ==============================================================================
-
-# TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
-    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
     def mostrar_editor_heatmap(key_prefix):
-        # Este expander ficará aninhado dentro da Aba Mestra
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
             with st.form(key=f"form_{key_prefix}"):
                 st.markdown("##### 🎨 Aparência Geral")
@@ -2996,13 +2965,11 @@ if st.session_state.get('processando', False):
                 "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto
             }
 
-    # --- 2. PREPARAÇÃO DOS DADOS ---
     df_corr_input = None
     if 'df_analise' in locals(): df_corr_input = df_analise.copy()
     elif 'df' in locals() and df is not None: df_corr_input = df.copy()
 
     if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
-        # Conversão forçada
         for col in lista_resps:
             try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
             except: pass 
@@ -3012,33 +2979,21 @@ if st.session_state.get('processando', False):
 
         if len(vars_corr) > 1:
             st.markdown("---")
-            # TÍTULO (Fica fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # ===> ABA MESTRA (AQUI ESTÁ A CORREÇÃO DE INDENTAÇÃO) <===
-            # Tudo abaixo está dentro deste 'with'
+            # ===> ABA MESTRA <===
             with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
-                
-                # 1. Editor Visual (Agora está dentro)
                 cfg = mostrar_editor_heatmap("corr_main")
-                
                 st.write("") 
                 
-                # 2. Seletor de Método (Agora está dentro)
-                metodo_corr = st.radio(
-                    "Método de Correlação:", 
-                    ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
-                    horizontal=True, index=1
-                )
+                metodo_corr = st.radio("Método de Correlação:", ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], horizontal=True, index=1)
                 metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
-                # 3. Avisos (Agora estão dentro)
                 if metodo == "pearson":
                     st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
                 else:
                     st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
 
-                # 4. Botão (Agora está dentro)
                 if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                 
                 if not st.session_state['matriz_gerada']:
@@ -3046,11 +3001,9 @@ if st.session_state.get('processando', False):
                         st.session_state['matriz_gerada'] = True
                         st.rerun()
                 
-                # 5. Gráfico (Agora está dentro)
                 if st.session_state['matriz_gerada']:
                     try:
                         df_corr = df_corr_input[vars_corr].corr(method=metodo)
-                        
                         colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
                         custom_text = []
                         vals = df_corr.values
@@ -3067,10 +3020,7 @@ if st.session_state.get('processando', False):
                                 row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
                             custom_text.append(row_text)
 
-                        fig_corr = px.imshow(
-                            df_corr, text_auto=False, aspect="auto",
-                            color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
-                        )
+                        fig_corr = px.imshow(df_corr, text_auto=False, aspect="auto", color_continuous_scale=colorscale_custom, zmin=-1, zmax=1)
                         
                         mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                         show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
@@ -3090,7 +3040,6 @@ if st.session_state.get('processando', False):
 
                         st.plotly_chart(fig_corr, use_container_width=True)
                         st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
-
                         st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
                         
                     except Exception as e:
@@ -3118,13 +3067,11 @@ except ImportError:
     except: HAS_SKLEARN = False
 
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
-    
     st.markdown("---")
     st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
-    # ===> ABA MESTRA PCA (INDENTAÇÃO CORRIGIDA) <===
+    # ===> ABA MESTRA PCA <===
     with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
-        
         if not HAS_SKLEARN:
             st.warning("⚠️ Biblioteca 'scikit-learn' não instalada. Instale via terminal.")
         else:
@@ -3132,7 +3079,6 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
                 st.info("O Biplot mostra a relação entre Tratamentos (Pontos) e Variáveis (Setas/Vetores).")
 
             c_pca1, c_pca2 = st.columns(2)
-            # Elementos de interface AGORA DENTRO do expander principal
             with c_pca1:
                 col_rotulo_pca = st.selectbox("Rótulo dos Pontos", cols_trats, key="pca_lbl")
             with c_pca2:
@@ -3153,7 +3099,6 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
                 import plotly.graph_objects as go
                 fig_pca = go.Figure()
                 
-                # Pontos
                 cor_points = df_medias_pca[col_cor_pca] if col_cor_pca and col_cor_pca in df_medias_pca.columns else None
                 fig_pca.add_trace(go.Scatter(
                     x=components[:, 0], y=components[:, 1], mode='markers+text',
@@ -3162,7 +3107,6 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
                     name="Tratamentos"
                 ))
                 
-                # Vetores
                 loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
                 escala = 1.0
                 if np.max(np.abs(loadings)) > 0: escala = np.max(np.abs(components)) / np.max(np.abs(loadings))
@@ -3196,10 +3140,8 @@ if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
     st.markdown("---")
     st.markdown("### 📑 Central de Relatórios")
     
-    # ===> ABA MESTRA RELATÓRIOS (INDENTAÇÃO CORRIGIDA) <===
+    # ===> ABA MESTRA RELATÓRIOS <===
     with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
-        
-        # Conteúdo agora DENTRO do expander
         st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
         st.info("Clique abaixo para gerar o arquivo completo para impressão.")
         
