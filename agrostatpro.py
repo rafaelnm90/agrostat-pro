@@ -2936,7 +2936,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada)
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - PADRONIZADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA PRINCIPAL: O bloco só é lido se a análise principal já tiver rodado
@@ -3026,204 +3026,187 @@ if st.session_state.get('processando', False):
     # Só executa se tivermos dados e variáveis selecionadas na lista
     if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
         
-        # --- CONVERSÃO FORÇADA (Trata vírgulas como pontos antes de checar numéricos) ---
+        # --- CONVERSÃO FORÇADA ---
         for col in lista_resps:
             try:
                 df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
             except:
                 pass 
 
-        # --- FILTRAGEM (Agora detectará corretamente os numéricos) ---
+        # --- FILTRAGEM ---
         cols_numericas_corr = df_corr_input.select_dtypes(include=[np.number]).columns.tolist()
         vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
 
-        # --- LÓGICA ORIGINAL (ESTÉTICA PRESERVADA) ---
+        # --- LÓGICA DE EXIBIÇÃO (ENCAPSULADA) ---
         if len(vars_corr) > 1:
             st.markdown("---")
-            st.header("🔗 Análise de Correlação entre Variáveis")
+            # TÍTULO DO TÓPICO
+            st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # 1. Menu de Configuração (Original)
-            cfg = mostrar_editor_heatmap("corr_main")
+            # CONTEÚDO ENCAPSULADO NA ABA (IGUAL RESULTADOS)
+            with st.expander("🛠️ Configurar e Visualizar Matriz de Correlação", expanded=False):
             
-            # Lógica de Seleção do Método
-            metodo_corr = st.radio(
-                "Método de Correlação:", 
-                ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
-                horizontal=True,
-                index=1 # Spearman selecionado por padrão para segurança
-            )
-            metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
-
-            # --- AVISO EDUCATIVO (ORIENTAÇÃO AO USUÁRIO) ---
-            if metodo == "pearson":
-                st.warning("""
-                ⚠️ **ATENÇÃO:** O método de **Pearson** é sensível a dados que não seguem distribuição normal. 
-                Se o seu conjunto de dados contiver variáveis **Não-Paramétricas** (ou uma mistura de Paramétricas e Não-Paramétricas), 
-                o uso de Pearson pode gerar correlações imprecisas. Na dúvida ou em dados mistos, prefira **Spearman**.
-                """)
-            else:
-                st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
-
-            # VAR DE CONTROLE INTERNO (BOTÃO DE AÇÃO)
-            # O gráfico só roda se o usuário clicar no botão do formulário (submit_btn) ou se já tiver rodado antes
-            if 'executar_corr_btn' not in st.session_state: st.session_state['executar_corr_btn'] = False
-            
-            # Se o botão do formulário foi clicado, ativa a visualização
-            # Nota: cfg é o retorno do form, que contém o submit_btn implícito pelo fluxo do streamlit form, 
-            # mas aqui usamos o retorno do form.submit no final da função acima? 
-            # Ajuste: A função mostrar_editor_heatmap retorna o dicionário configs. O botão está dentro dela.
-            # O Streamlit rerun acontece quando o botão do form é clicado.
-            
-            # Para garantir que o gráfico apareça após clicar, verificamos se o form foi submetido.
-            # Como a função retorna configs, assumimos que se estamos aqui, o script rodou.
-            # Para economizar recursos, podemos usar um st.button EXTERNO ao form se quisermos travar o cálculo,
-            # mas você pediu um botão "Atualizar". O botão dentro do form já faz isso!
-            
-            # Então, vamos rodar o cálculo (que é pesado) SEMPRE QUE O SCRIPT PASSAR AQUI?
-            # Não, você quer travar. Vamos adicionar uma trava extra visual.
-            
-            container_grafico = st.container()
-            
-            # Cálculo da Matriz (Usando o dataframe corrigido)
-            try:
-                # O cálculo pesado acontece aqui. 
-                # Se quiser evitar que rode automaticamente na primeira vez que abre a seção (após Rodar Dados),
-                # podemos colocar um botão inicial "Gerar Matriz".
+                # 1. Menu de Configuração (Original)
+                cfg = mostrar_editor_heatmap("corr_main")
                 
-                if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
-                
-                if not st.session_state['matriz_gerada']:
-                    if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
-                        st.session_state['matriz_gerada'] = True
-                        st.rerun()
-                
-                if st.session_state['matriz_gerada']:
-                    df_corr = df_corr_input[vars_corr].corr(method=metodo)
-                    
-                    # 3. Definição da Escala de Cores do Fundo
-                    colorscale_custom = [
-                        [0.0, cfg['cor_mapa'][0]], # -1
-                        [0.5, cfg['cor_mapa'][1]], # 0
-                        [1.0, cfg['cor_mapa'][2]]  # 1
-                    ]
-                    
-                    # 4. PREPARAÇÃO DO TEXTO CUSTOMIZADO (HTML)
-                    custom_text = []
-                    vals = df_corr.values
-                    
-                    for i in range(len(vals)):
-                        row_text = []
-                        for val in vals[i]:
-                            # Define a cor
-                            c_code = "#000000"
-                            if cfg['modo_cor_txt'] == "Cor Única":
-                                c_code = cfg['cores_texto']['unica']
-                            else:
-                                if val > 0.001: c_code = cfg['cores_texto']['pos']
-                                elif val < -0.001: c_code = cfg['cores_texto']['neg']
-                                else: c_code = cfg['cores_texto']['zero']
-                            
-                            # Define Negrito
-                            val_fmt = f"{val:.2f}"
-                            if cfg['val_negrito']:
-                                val_fmt = f"<b>{val_fmt}</b>"
-                            
-                            # Cria o HTML final para a célula
-                            cell_html = f"<span style='color:{c_code}'>{val_fmt}</span>"
-                            row_text.append(cell_html)
-                        custom_text.append(row_text)
+                # Lógica de Seleção do Método
+                metodo_corr = st.radio(
+                    "Método de Correlação:", 
+                    ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
+                    horizontal=True,
+                    index=1 # Spearman selecionado por padrão para segurança
+                )
+                metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
-                    # 5. Geração do Gráfico (Sem text_auto)
-                    fig_corr = px.imshow(
-                        df_corr,
-                        text_auto=False, # Desligamos o auto para usar nosso custom_text
-                        aspect="auto",
-                        color_continuous_scale=colorscale_custom,
-                        zmin=-1, zmax=1
-                    )
+                # --- AVISO EDUCATIVO (ORIENTAÇÃO AO USUÁRIO) ---
+                if metodo == "pearson":
+                    st.warning("""
+                    ⚠️ **ATENÇÃO:** O método de **Pearson** é sensível a dados que não seguem distribuição normal. 
+                    Se o seu conjunto de dados contiver variáveis **Não-Paramétricas** (ou uma mistura de Paramétricas e Não-Paramétricas), 
+                    o uso de Pearson pode gerar correlações imprecisas. Na dúvida ou em dados mistos, prefira **Spearman**.
+                    """)
+                else:
+                    st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
+
+                # VAR DE CONTROLE INTERNO (BOTÃO DE AÇÃO)
+                if 'executar_corr_btn' not in st.session_state: st.session_state['executar_corr_btn'] = False
+                
+                # Cálculo da Matriz (Usando o dataframe corrigido)
+                try:
+                    if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                     
-                    # 6. Personalização Avançada (Layout)
-                    mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
-                    show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
-                    tick_mode = "outside" if cfg['ticks'] else ""
-                    weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
-                    title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
+                    if not st.session_state['matriz_gerada']:
+                        if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
+                            st.session_state['matriz_gerada'] = True
+                            st.rerun()
                     
-                    fig_corr.update_layout(
-                        title=dict(
-                            text=title_text,
-                            x=0.5,
-                            font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])
-                        ),
-                        height=500,
-                        paper_bgcolor=cfg['cor_fundo'], 
-                        plot_bgcolor=cfg['cor_fundo'],
-                        font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
-                        xaxis=dict(
-                            showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
-                            ticks=tick_mode, tickcolor=cfg['cor_eixos'],
-                            tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
-                        ),
-                        yaxis=dict(
-                            showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
-                            ticks=tick_mode, tickcolor=cfg['cor_eixos'],
-                            tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
+                    if st.session_state['matriz_gerada']:
+                        df_corr = df_corr_input[vars_corr].corr(method=metodo)
+                        
+                        # 3. Definição da Escala de Cores do Fundo
+                        colorscale_custom = [
+                            [0.0, cfg['cor_mapa'][0]], # -1
+                            [0.5, cfg['cor_mapa'][1]], # 0
+                            [1.0, cfg['cor_mapa'][2]]  # 1
+                        ]
+                        
+                        # 4. PREPARAÇÃO DO TEXTO CUSTOMIZADO (HTML)
+                        custom_text = []
+                        vals = df_corr.values
+                        
+                        for i in range(len(vals)):
+                            row_text = []
+                            for val in vals[i]:
+                                # Define a cor
+                                c_code = "#000000"
+                                if cfg['modo_cor_txt'] == "Cor Única":
+                                    c_code = cfg['cores_texto']['unica']
+                                else:
+                                    if val > 0.001: c_code = cfg['cores_texto']['pos']
+                                    elif val < -0.001: c_code = cfg['cores_texto']['neg']
+                                    else: c_code = cfg['cores_texto']['zero']
+                                
+                                # Define Negrito
+                                val_fmt = f"{val:.2f}"
+                                if cfg['val_negrito']:
+                                    val_fmt = f"<b>{val_fmt}</b>"
+                                
+                                # Cria o HTML final para a célula
+                                cell_html = f"<span style='color:{c_code}'>{val_fmt}</span>"
+                                row_text.append(cell_html)
+                            custom_text.append(row_text)
+
+                        # 5. Geração do Gráfico (Sem text_auto)
+                        fig_corr = px.imshow(
+                            df_corr,
+                            text_auto=False, # Desligamos o auto para usar nosso custom_text
+                            aspect="auto",
+                            color_continuous_scale=colorscale_custom,
+                            zmin=-1, zmax=1
                         )
-                    )
-                    
-                    # Atualização da Legenda Lateral
-                    fig_corr.update_coloraxes(
-                        colorbar=dict(
-                            tickfont=dict(
-                                family=cfg['fonte'],
-                                color=cfg['cor_eixos'], 
-                                size=cfg['tamanho_fonte_val'], 
-                                weight=weight_eixos
+                        
+                        # 6. Personalização Avançada (Layout)
+                        mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
+                        show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
+                        tick_mode = "outside" if cfg['ticks'] else ""
+                        weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
+                        title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
+                        
+                        fig_corr.update_layout(
+                            title=dict(
+                                text=title_text,
+                                x=0.5,
+                                font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])
                             ),
-                            title=dict(text="")
+                            height=500,
+                            paper_bgcolor=cfg['cor_fundo'], 
+                            plot_bgcolor=cfg['cor_fundo'],
+                            font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
+                            xaxis=dict(
+                                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
+                                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
+                                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
+                            ),
+                            yaxis=dict(
+                                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
+                                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
+                                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
+                            )
                         )
-                    )
-
-                    # 7. Injeção do Texto HTML
-                    fig_corr.update_traces(
-                        text=custom_text, 
-                        texttemplate="%{text}",
-                        textfont=dict(
-                            family=cfg['fonte'],
-                            size=cfg['tamanho_fonte_val']
+                        
+                        # Atualização da Legenda Lateral
+                        fig_corr.update_coloraxes(
+                            colorbar=dict(
+                                tickfont=dict(
+                                    family=cfg['fonte'],
+                                    color=cfg['cor_eixos'], 
+                                    size=cfg['tamanho_fonte_val'], 
+                                    weight=weight_eixos
+                                ),
+                                title=dict(text="")
+                            )
                         )
-                    )
 
-                    # --- EXIBIÇÃO FINAL ---
-                    st.plotly_chart(fig_corr, use_container_width=True)
-                    st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+                        # 7. Injeção do Texto HTML
+                        fig_corr.update_traces(
+                            text=custom_text, 
+                            texttemplate="%{text}",
+                            textfont=dict(
+                                family=cfg['fonte'],
+                                size=cfg['tamanho_fonte_val']
+                            )
+                        )
 
-                    # --- NOTA DE RODAPÉ ADAPTATIVA ---
-                    st.markdown(f"""
-                    <div style="
-                        font-family: 'Times New Roman', Times, serif; 
-                        font-size: 0.9em; 
-                        border-top: 1px solid rgba(128, 128, 128, 0.5); 
-                        margin-top: 10px; 
-                        padding-top: 8px; 
-                        text-align: justify;">
-                        <b>Nota:</b> A matriz acima apresenta os coeficientes de correlação ({'<i>r</i> de Pearson' if metodo == 'pearson' else '<i>ρ</i> de Spearman'}) 
-                        entre as variáveis analisadas. O coeficiente varia no intervalo <b>[-1, +1]</b>. 
-                        Valores próximos a <b>+1</b> indicam forte associação linear positiva (proporcionalidade direta), 
-                        enquanto valores próximos a <b>-1</b> indicam forte associação linear negativa (proporcionalidade inversa). 
-                        Coeficientes próximos a <b>0</b> sugerem ausência de correlação linear significativa.
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-            except Exception as e:
-                st.error(f"Não foi possível calcular a correlação: {e}")
+                        # --- EXIBIÇÃO FINAL ---
+                        st.plotly_chart(fig_corr, use_container_width=True)
+                        st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+
+                        # --- NOTA DE RODAPÉ ADAPTATIVA ---
+                        st.markdown(f"""
+                        <div style="
+                            font-family: 'Times New Roman', Times, serif; 
+                            font-size: 0.9em; 
+                            border-top: 1px solid rgba(128, 128, 128, 0.5); 
+                            margin-top: 10px; 
+                            padding-top: 8px; 
+                            text-align: justify;">
+                            <b>Nota:</b> A matriz acima apresenta os coeficientes de correlação ({'<i>r</i> de Pearson' if metodo == 'pearson' else '<i>ρ</i> de Spearman'}) 
+                            entre as variáveis analisadas. O coeficiente varia no intervalo <b>[-1, +1]</b>. 
+                            Valores próximos a <b>+1</b> indicam forte associação linear positiva (proporcionalidade direta), 
+                            enquanto valores próximos a <b>-1</b> indicam forte associação linear negativa (proporcionalidade inversa). 
+                            Coeficientes próximos a <b>0</b> sugerem ausência de correlação linear significativa.
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                except Exception as e:
+                    st.error(f"Não foi possível calcular a correlação: {e}")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - ROBUSTO
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - PADRONIZADO
 # ==============================================================================
 # Flag de controle
 HAS_SKLEARN = False
@@ -3254,7 +3237,8 @@ except ImportError:
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
     
     st.markdown("---")
-    st.header("🧬 Análise de Componentes Principais (PCA)")
+    # TÍTULO DO TÓPICO
+    st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
     # SE A BIBLIOTECA NÃO ESTIVER DISPONÍVEL, MOSTRA AVISO E PARA O BLOCO AQUI
     if not HAS_SKLEARN:
@@ -3262,180 +3246,186 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
         st.info("👉 **Solução Manual:** Pare o script e rode no terminal: `pip install scikit-learn`")
     
     else:
-        # --- CÓDIGO DO PCA (SÓ EXECUTA SE HAS_SKLEARN == TRUE) ---
-        with st.expander("ℹ️ O que é isso?", expanded=False):
-            st.info("""
-            O PCA reduz a dimensionalidade dos dados. 
-            - **Pontos:** Representam os Tratamentos. Pontos próximos indicam comportamento similar.
-            - **Vetores (Setas):** Representam as Variáveis. Setas na mesma direção indicam alta correlação positiva.
-            """)
+        # CONTEÚDO ENCAPSULADO NA ABA
+        with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
+            # --- CÓDIGO DO PCA (SÓ EXECUTA SE HAS_SKLEARN == TRUE) ---
+            with st.expander("ℹ️ O que é isso?", expanded=False):
+                st.info("""
+                O PCA reduz a dimensionalidade dos dados. 
+                - **Pontos:** Representam os Tratamentos. Pontos próximos indicam comportamento similar.
+                - **Vetores (Setas):** Representam as Variáveis. Setas na mesma direção indicam alta correlação positiva.
+                """)
 
-        # Configuração
-        c_pca1, c_pca2 = st.columns(2)
-        with c_pca1:
-            col_rotulo_pca = st.selectbox("Rótulo dos Pontos (Tratamento)", cols_trats, key="pca_lbl")
-        with c_pca2:
-            col_cor_pca = st.selectbox("Colorir por (Opcional)", [None] + cols_trats + ([col_local] if 'col_local' in locals() else []), key="pca_cor")
+            # Configuração
+            c_pca1, c_pca2 = st.columns(2)
+            with c_pca1:
+                col_rotulo_pca = st.selectbox("Rótulo dos Pontos (Tratamento)", cols_trats, key="pca_lbl")
+            with c_pca2:
+                col_cor_pca = st.selectbox("Colorir por (Opcional)", [None] + cols_trats + ([col_local] if 'col_local' in locals() else []), key="pca_cor")
 
-        # Botão para Executar
-        if st.button("🔄 Gerar Biplot PCA", type="primary"):
-            
-            # 1. Preparação dos Dados
-            df_pca = df_corr_input.dropna(subset=vars_corr).copy()
-            
-            # Agrupar médias por tratamento
-            df_medias_pca = df_pca.groupby(col_rotulo_pca)[vars_corr].mean().reset_index()
-            
-            X = df_medias_pca[vars_corr]
-            
-            # 2. Padronização
-            scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X)
-            
-            # 3. Modelo PCA
-            pca = PCA(n_components=2)
-            components = pca.fit_transform(X_scaled)
-            
-            # Variância Explicada
-            var_expl = pca.explained_variance_ratio_ * 100
-            
-            # 4. Plotagem (Biplot Manual com Plotly)
-            import plotly.graph_objects as go
-            fig_pca = go.Figure()
-            
-            # A. Adicionar Pontos (Tratamentos)
-            cor_points = df_medias_pca[col_cor_pca] if col_cor_pca and col_cor_pca in df_medias_pca.columns else None
-            
-            fig_pca.add_trace(go.Scatter(
-                x=components[:, 0], 
-                y=components[:, 1],
-                mode='markers+text',
-                text=df_medias_pca[col_rotulo_pca],
-                textposition="top center",
-                marker=dict(size=12, color=cor_points if cor_points is not None else '#2E86C1', showscale=True if cor_points is not None else False),
-                name="Tratamentos"
-            ))
-            
-            # B. Adicionar Vetores (Variáveis)
-            loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
-            
-            escala = 1.0
-            max_pt = np.max(np.abs(components))
-            max_vec = np.max(np.abs(loadings))
-            if max_vec > 0: escala = max_pt / max_vec
-            
-            for i, feature in enumerate(vars_corr):
+            # Botão para Executar
+            if st.button("🔄 Gerar Biplot PCA", type="primary"):
+                
+                # 1. Preparação dos Dados
+                df_pca = df_corr_input.dropna(subset=vars_corr).copy()
+                
+                # Agrupar médias por tratamento
+                df_medias_pca = df_pca.groupby(col_rotulo_pca)[vars_corr].mean().reset_index()
+                
+                X = df_medias_pca[vars_corr]
+                
+                # 2. Padronização
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(X)
+                
+                # 3. Modelo PCA
+                pca = PCA(n_components=2)
+                components = pca.fit_transform(X_scaled)
+                
+                # Variância Explicada
+                var_expl = pca.explained_variance_ratio_ * 100
+                
+                # 4. Plotagem (Biplot Manual com Plotly)
+                import plotly.graph_objects as go
+                fig_pca = go.Figure()
+                
+                # A. Adicionar Pontos (Tratamentos)
+                cor_points = df_medias_pca[col_cor_pca] if col_cor_pca and col_cor_pca in df_medias_pca.columns else None
+                
                 fig_pca.add_trace(go.Scatter(
-                    x=[0, loadings[i, 0] * escala],
-                    y=[0, loadings[i, 1] * escala],
-                    mode='lines+markers',
-                    marker=dict(size=5, symbol='arrow-bar-up', angleref="previous"),
-                    line=dict(color='red', width=2),
-                    name=f"Vetor: {feature}",
-                    hoverinfo='name'
+                    x=components[:, 0], 
+                    y=components[:, 1],
+                    mode='markers+text',
+                    text=df_medias_pca[col_rotulo_pca],
+                    textposition="top center",
+                    marker=dict(size=12, color=cor_points if cor_points is not None else '#2E86C1', showscale=True if cor_points is not None else False),
+                    name="Tratamentos"
                 ))
-                fig_pca.add_annotation(
-                    x=loadings[i, 0] * escala, y=loadings[i, 1] * escala,
-                    text=feature, showarrow=False, font=dict(color="red", size=12),
-                    yshift=10
-                )
+                
+                # B. Adicionar Vetores (Variáveis)
+                loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
+                
+                escala = 1.0
+                max_pt = np.max(np.abs(components))
+                max_vec = np.max(np.abs(loadings))
+                if max_vec > 0: escala = max_pt / max_vec
+                
+                for i, feature in enumerate(vars_corr):
+                    fig_pca.add_trace(go.Scatter(
+                        x=[0, loadings[i, 0] * escala],
+                        y=[0, loadings[i, 1] * escala],
+                        mode='lines+markers',
+                        marker=dict(size=5, symbol='arrow-bar-up', angleref="previous"),
+                        line=dict(color='red', width=2),
+                        name=f"Vetor: {feature}",
+                        hoverinfo='name'
+                    ))
+                    fig_pca.add_annotation(
+                        x=loadings[i, 0] * escala, y=loadings[i, 1] * escala,
+                        text=feature, showarrow=False, font=dict(color="red", size=12),
+                        yshift=10
+                    )
 
-            fig_pca.update_layout(
-                title=f"Biplot PCA (Total Explicado: {sum(var_expl):.2f}%)",
-                xaxis_title=f"PC1 ({var_expl[0]:.2f}%)",
-                yaxis_title=f"PC2 ({var_expl[1]:.2f}%)",
-                template="plotly_white",
-                height=600,
-                showlegend=False
-            )
-            
-            st.plotly_chart(fig_pca, use_container_width=True)
+                fig_pca.update_layout(
+                    title=f"Biplot PCA (Total Explicado: {sum(var_expl):.2f}%)",
+                    xaxis_title=f"PC1 ({var_expl[0]:.2f}%)",
+                    yaxis_title=f"PC2 ({var_expl[1]:.2f}%)",
+                    template="plotly_white",
+                    height=600,
+                    showlegend=False
+                )
+                
+                st.plotly_chart(fig_pca, use_container_width=True)
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21-B
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Gerador de Relatório Completo (HTML Download)
+# 📂 BLOCO 22: Gerador de Relatório Completo (HTML Download) - PADRONIZADO
 # ==============================================================================
     # ATENÇÃO: Esta parte fica FORA do loop (alinhada à esquerda do IF principal)
     
     if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
         st.markdown("---")
-        st.header("📑 Central de Relatórios")
-        st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
-        st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
+        # TÍTULO DO TÓPICO
+        st.markdown("### 📑 Central de Relatórios")
         
-        def fig_to_html(fig):
-            if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
-            return "<div style='color:#999;'>Gráfico não gerado automaticamente (verifique abas).</div>"
+        # CONTEÚDO ENCAPSULADO
+        with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
+            st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
+            st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
+            
+            def fig_to_html(fig):
+                if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
+                return "<div style='color:#999;'>Gráfico não gerado automaticamente (verifique abas).</div>"
 
-        def df_to_html(df):
-            if df is not None: return df.to_html(classes='table table-striped', float_format="%.2f", justify='center')
-            return "<div style='color:#999;'>Tabela não disponível.</div>"
+            def df_to_html(df):
+                if df is not None: return df.to_html(classes='table table-striped', float_format="%.2f", justify='center')
+                return "<div style='color:#999;'>Tabela não disponível.</div>"
 
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Relatório AgroStat Pro</title>
-            <meta charset="utf-8">
-            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
-            <style>
-                body {{ font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f4f4f4; }}
-                .container {{ background: white; padding: 40px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); }}
-                h1 {{ color: #2E86C1; text-align: center; margin-bottom: 10px; }}
-                .var-section {{ margin-bottom: 60px; border-bottom: 2px solid #eee; padding-bottom: 40px; }}
-                h2 {{ color: #28B463; border-left: 5px solid #28B463; padding-left: 15px; }}
-                .metric-box {{ background: #f8f9fa; border: 1px solid #ddd; padding: 15px; margin-top: 20px; }}
-                .table-container {{ margin-top: 20px; overflow-x: auto; }}
-                table {{ width: 100%; text-align: center; }}
-                th {{ background-color: #2E86C1; color: white; }}
-                @media print {{ .no-print {{ display: none; }} .var-section {{ page-break-inside: avoid; }} }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="no-print" style="text-align:right; margin-bottom:20px;">
-                    <button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
-                </div>
-                <h1>🌱 AgroStat Pro - Relatório de Análise</h1>
-                <p style="text-align:center;">Data: {dados_para_relatorio_final[0]['data_hora']}</p>
-                <hr>
-        """
-
-        for item in dados_para_relatorio_final:
-            html_content += f"""
-            <div class="var-section">
-                <h2>Variável: {item['var']}</h2>
-                <div class="row metric-box">
-                    <div class="col-md-3"><strong>Método:</strong><br>{item['metodo']}</div>
-                    <div class="col-md-3"><strong>Transformação:</strong><br>{item['transf']}</div>
-                    <div class="col-md-3"><strong>Normalidade (P):</strong><br>{item['p_norm']:.4f}</div>
-                    <div class="col-md-3"><strong>CV (%):</strong><br>{item['cv']}</div>
-                </div>
-                <div class="alert alert-info" style="margin-top: 15px;"><strong>Conclusão:</strong> {item['conclusao']}</div>
-                <div class="row">
-                    <div class="col-md-5">
-                        <h5 style="margin-top:20px;">📋 Resultados</h5>
-                        <div class="table-container">{df_to_html(item['tabela_medias'])}</div>
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Relatório AgroStat Pro</title>
+                <meta charset="utf-8">
+                <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+                <style>
+                    body {{ font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f4f4f4; }}
+                    .container {{ background: white; padding: 40px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); }}
+                    h1 {{ color: #2E86C1; text-align: center; margin-bottom: 10px; }}
+                    .var-section {{ margin-bottom: 60px; border-bottom: 2px solid #eee; padding-bottom: 40px; }}
+                    h2 {{ color: #28B463; border-left: 5px solid #28B463; padding-left: 15px; }}
+                    .metric-box {{ background: #f8f9fa; border: 1px solid #ddd; padding: 15px; margin-top: 20px; }}
+                    .table-container {{ margin-top: 20px; overflow-x: auto; }}
+                    table {{ width: 100%; text-align: center; }}
+                    th {{ background-color: #2E86C1; color: white; }}
+                    @media print {{ .no-print {{ display: none; }} .var-section {{ page-break-inside: avoid; }} }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="no-print" style="text-align:right; margin-bottom:20px;">
+                        <button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
                     </div>
-                    <div class="col-md-7">
-                        <h5 style="margin-top:20px;">📊 Gráfico</h5>
-                        <div style="border:1px solid #eee; padding:10px;">{fig_to_html(item['grafico'])}</div>
-                    </div>
-                </div>
-            </div>
+                    <h1>🌱 AgroStat Pro - Relatório de Análise</h1>
+                    <p style="text-align:center;">Data: {dados_para_relatorio_final[0]['data_hora']}</p>
+                    <hr>
             """
 
-        html_content += "</div></body></html>"
+            for item in dados_para_relatorio_final:
+                html_content += f"""
+                <div class="var-section">
+                    <h2>Variável: {item['var']}</h2>
+                    <div class="row metric-box">
+                        <div class="col-md-3"><strong>Método:</strong><br>{item['metodo']}</div>
+                        <div class="col-md-3"><strong>Transformação:</strong><br>{item['transf']}</div>
+                        <div class="col-md-3"><strong>Normalidade (P):</strong><br>{item['p_norm']:.4f}</div>
+                        <div class="col-md-3"><strong>CV (%):</strong><br>{item['cv']}</div>
+                    </div>
+                    <div class="alert alert-info" style="margin-top: 15px;"><strong>Conclusão:</strong> {item['conclusao']}</div>
+                    <div class="row">
+                        <div class="col-md-5">
+                            <h5 style="margin-top:20px;">📋 Resultados</h5>
+                            <div class="table-container">{df_to_html(item['tabela_medias'])}</div>
+                        </div>
+                        <div class="col-md-7">
+                            <h5 style="margin-top:20px;">📊 Gráfico</h5>
+                            <div style="border:1px solid #eee; padding:10px;">{fig_to_html(item['grafico'])}</div>
+                        </div>
+                    </div>
+                </div>
+                """
 
-        st.download_button(
-            label="📥 Baixar Relatório Completo (HTML com Gráficos)",
-            data=html_content,
-            file_name="Relatorio_AgroStat.html",
-            mime="text/html"
-        )
+            html_content += "</div></body></html>"
+
+            st.download_button(
+                label="📥 Baixar Relatório Completo (HTML com Gráficos)",
+                data=html_content,
+                file_name="Relatorio_AgroStat.html",
+                mime="text/html"
+            )
 # ==============================================================================
 # 🏁 FIM DO BLOCO 22
 # ==============================================================================
