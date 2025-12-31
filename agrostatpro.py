@@ -2990,7 +2990,7 @@ if st.session_state.get('processando', False):
             
             # ===> ABA MESTRA <===
             # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
-            with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
+            with st.expander("🧩 Configurar e Visualizar Matriz de Correlação", expanded=False):
                 
                 # 1. Editor Visual (Agora dentro da aba)
                 cfg = mostrar_editor_heatmap("corr_main")
