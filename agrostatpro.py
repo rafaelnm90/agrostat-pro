@@ -2936,15 +2936,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - VISUAL PADRONIZADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - ENCAPSULADO
 # ==============================================================================
 
-# TRAVA DE SEGURANÇA PRINCIPAL: O bloco só é lido se a análise principal já tiver rodado
+# TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
-    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO (Mantida) ---
+    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
     def mostrar_editor_heatmap(key_prefix):
-        # Nota: Este expander ficará dentro do expander principal (aninhado)
+        # Este expander ficará dentro da Aba Mestra (Aninhado)
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
             with st.form(key=f"form_{key_prefix}"):
                 st.markdown("##### 🎨 Aparência Geral")
@@ -3012,15 +3012,18 @@ if st.session_state.get('processando', False):
 
         if len(vars_corr) > 1:
             st.markdown("---")
-            # TÍTULO PADRÃO (Fora da aba)
+            # TÍTULO (Fica fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # --- ABA MESTRA (Aqui está a correção solicitada) ---
-            with st.expander("📊 Gráfico de Correlação (Clique para Expandir)", expanded=False):
+            # --- ABA MESTRA (AQUI ESTÁ A MUDANÇA PRINCIPAL) ---
+            # Tudo abaixo está indentado dentro deste with
+            with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
                 
-                # Todo o conteúdo agora está INDENTADO aqui dentro
+                # 1. Editor Visual (Gera o expander interno "Personalizar")
                 cfg = mostrar_editor_heatmap("corr_main")
                 
+                # 2. Seletor de Método
+                st.write("") # Espaçamento
                 metodo_corr = st.radio(
                     "Método de Correlação:", 
                     ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
@@ -3031,23 +3034,22 @@ if st.session_state.get('processando', False):
                 if metodo == "pearson":
                     st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
                 else:
-                    st.success("✅ **Ótima escolha:** Spearman é robusto para dados não-paramétricos e normais.")
+                    st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
 
+                # 3. Estado e Botão
                 if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                 
-                # Botão Principal (dentro da aba)
                 if not st.session_state['matriz_gerada']:
                     if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
                         st.session_state['matriz_gerada'] = True
                         st.rerun()
                 
+                # 4. Exibição do Gráfico (Dentro da Aba Mestra)
                 if st.session_state['matriz_gerada']:
                     try:
                         df_corr = df_corr_input[vars_corr].corr(method=metodo)
                         
-                        # Definição de Cores e Texto (Lógica resumida para brevidade visual)
                         colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
-                        
                         custom_text = []
                         vals = df_corr.values
                         for i in range(len(vals)):
@@ -3059,7 +3061,6 @@ if st.session_state.get('processando', False):
                                     if val > 0.001: c_code = cfg['cores_texto'].get('pos', 'blue')
                                     elif val < -0.001: c_code = cfg['cores_texto'].get('neg', 'red')
                                     else: c_code = "#AAAAAA"
-                                
                                 val_fmt = f"<b>{val:.2f}</b>" if cfg['val_negrito'] else f"{val:.2f}"
                                 row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
                             custom_text.append(row_text)
@@ -3069,7 +3070,6 @@ if st.session_state.get('processando', False):
                             color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
                         )
                         
-                        # Layout
                         mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                         show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
                         tick_mode = "outside" if cfg['ticks'] else ""
@@ -3087,8 +3087,7 @@ if st.session_state.get('processando', False):
                         fig_corr.update_traces(text=custom_text, texttemplate="%{text}")
 
                         st.plotly_chart(fig_corr, use_container_width=True)
-                        with st.expander("Ver Tabela de Dados"):
-                            st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+                        st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
 
                         st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
                         
@@ -3100,7 +3099,7 @@ if st.session_state.get('processando', False):
 
 
 # ==============================================================================
-# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - VISUAL PADRONIZADO
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - ENCAPSULADO
 # ==============================================================================
 HAS_SKLEARN = False
 try:
@@ -3119,14 +3118,16 @@ except ImportError:
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
     
     st.markdown("---")
+    # TÍTULO (Fora da aba)
     st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
     # --- ABA MESTRA PCA ---
-    with st.expander("🧬 Biplot PCA (Configuração e Gráfico)", expanded=False):
+    with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
         
         if not HAS_SKLEARN:
             st.warning("⚠️ Biblioteca 'scikit-learn' não instalada. Instale via terminal.")
         else:
+            # Expander de Ajuda (Aninhado dentro da Aba Mestra)
             with st.expander("ℹ️ Ajuda: O que é Biplot?", expanded=False):
                 st.info("O Biplot mostra a relação entre Tratamentos (Pontos) e Variáveis (Setas/Vetores).")
 
@@ -3188,18 +3189,19 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Gerador de Relatório Completo - VISUAL PADRONIZADO
+# 📂 BLOCO 22: Gerador de Relatório Completo - ENCAPSULADO
 # ==============================================================================
 if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
     st.markdown("---")
+    # TÍTULO (Fora da aba)
     st.markdown("### 📑 Central de Relatórios")
     
     # --- ABA MESTRA RELATÓRIOS ---
-    with st.expander("🖨️ Opções de Download (PDF/HTML)", expanded=True):
+    with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
         st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
-        st.info("Clique abaixo para gerar o arquivo completo para impressão.")
+        st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
         
-        # Funções auxiliares de HTML (mantidas para funcionamento)
+        # Funções auxiliares de HTML
         def fig_to_html(fig):
             if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
             return "<div style='color:#999;'>Gráfico não disponível.</div>"
