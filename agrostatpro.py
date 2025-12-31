@@ -1188,24 +1188,25 @@ def rodar_analise_conjunta(df_input, col_trat, col_resp, col_local, delineamento
 
 
 # ==============================================================================
-# 📂 BLOCO 11: Motores Estatísticos V (OLS Principais - Com Cache)
+# 📂 BLOCO 11: Motores Estatísticos V (OLS Principais - Com Cache e Sanitização)
 # ==============================================================================
 from patsy.contrasts import Sum
 
 @st.cache_data(show_spinner=False)
 def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=None):
     """
-    Roda ANOVA Individual Dinâmica (Suporta Fatorial).
-    Usa mapeamento de nomes seguros para evitar SyntaxError no Patsy.
+    Roda ANOVA Individual com Sanitização de Nomes (Compatível com Python 3.13+).
+    Substitui nomes complexos por apelidos simples (V1, V2...) durante o cálculo.
     """
-    # 1. Mapeamento para Nomes Seguros (Evita erro de sintaxe com aspas/espaços)
+    # 1. Mapeamento Seguro (Sanitização)
+    # Cria um dicionário: {Nome_Original: Nome_Seguro}
     mapa_seguro = {}
     col_y_safe = "VAR_RESP_SAFE"
     mapa_seguro[col_resp] = col_y_safe
     
     trats_safe = []
     for i, t in enumerate(cols_trats):
-        nome_safe = f"FAT_{i}_SAFE"
+        nome_safe = f"FATOR_{i}_SAFE"
         mapa_seguro[t] = nome_safe
         trats_safe.append(nome_safe)
         
@@ -1213,10 +1214,14 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     if delineamento == 'DBC':
         mapa_seguro[col_bloco] = bloco_safe
 
-    # Cria DataFrame com nomes limpos apenas para o cálculo
+    # Cria DataFrame temporário apenas com os nomes seguros
+    # Isso elimina espaços, acentos e caracteres que quebram o Python 3.13
     df_calc = df.rename(columns=mapa_seguro).copy()
     
-    # 2. Montagem da Fórmula (Sem necessidade de Q(), pois nomes são seguros)
+    # 2. Montagem da Fórmula (Sem Q(), apenas identificadores limpos)
+    # Importa Sum explicitamente para o escopo local garantir visibilidade
+    from patsy.contrasts import Sum
+    
     termos_trats = [f"C({ts}, Sum)" for ts in trats_safe]
     formula_trats = " * ".join(termos_trats)
     
@@ -1227,23 +1232,27 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     
     res = {}
     
-    # 3. Execução do Modelo
+    # 3. Execução do Modelo (Blindada)
     try:
+        # Tenta rodar com contraste Sum (Tipo III)
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
-    except:
+    except Exception:
+        # Fallback para contraste padrão se falhar
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
-    # 4. Restauração dos Nomes Originais na Tabela ANOVA
-    # Substitui os nomes seguros (FAT_0_SAFE) pelos reais com wrapper Q('') para compatibilidade visual
+    # 4. Restauração dos Nomes Originais (Visualização)
+    # O usuário não deve ver "FATOR_0_SAFE", e sim o nome real
     novo_index = []
     for idx in anova.index:
         idx_str = str(idx)
+        # Substitui de volta os nomes seguros pelos originais
         for original, safe in mapa_seguro.items():
             if safe in idx_str:
-                # Reconstrói a string visual como se o Patsy tivesse funcionado com Q()
-                idx_str = idx_str.replace(safe, f"Q('{original}')")
+                # Remove estruturas do Patsy para limpar o nome visualmente
+                idx_str = idx_str.replace(f"C({safe}, Sum)", original)
+                idx_str = idx_str.replace(safe, original)
         novo_index.append(idx_str)
     anova.index = novo_index
 
@@ -1252,25 +1261,32 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     
-    # 5. Extração do P-valor (Busca robusta)
+    # 5. Extração do P-valor (Busca Robusta nos nomes restaurados)
     try:
         if len(cols_trats) == 1:
-            # Pega o primeiro índice que contém o nome do tratamento (agora restaurado)
-            idx_found = [ix for ix in anova.index if f"Q('{cols_trats[0]}')" in str(ix)][0]
-            res['p_val'] = anova.loc[idx_found, "PR(>F)"]
+            # Procura pelo nome da coluna de tratamento no índice restaurado
+            target = cols_trats[0]
+            # Filtra linhas que contém o tratamento mas não são interações complexas (se houver)
+            idx_found = [ix for ix in anova.index if target in str(ix) and ":" not in str(ix)]
+            if idx_found:
+                res['p_val'] = anova.loc[idx_found[0], "PR(>F)"]
+            else:
+                res['p_val'] = 1.0
         else:
-            target_depth = len(cols_trats) - 1
-            res['p_val'] = 1.0
-            for idx in anova.index:
-                if str(idx).count(":") == target_depth and "Residual" not in str(idx) and "BLOCO_SAFE" not in str(idx):
-                      res['p_val'] = anova.loc[idx, "PR(>F)"]
-                      break
+            # Para fatorial, tenta pegar a interação de maior ordem
+            # Lógica simplificada: pega o último p-valor que não seja Resíduo ou Bloco
+            candidatos = [ix for ix in anova.index if "Resid" not in str(ix) and "BLOCO" not in str(ix) and "Intercept" not in str(ix)]
+            if candidatos:
+                res['p_val'] = anova.loc[candidatos[-1], "PR(>F)"]
+            else:
+                res['p_val'] = 1.0
     except:
         res['p_val'] = 1.0
 
-    # 6. Pressupostos (Usando dados originais mapeados)
+    # 6. Pressupostos (Usando os dados mapeados para cálculo correto)
     res['shapiro'] = stats.shapiro(modelo.resid)
     
+    # Prepara grupos para Bartlett/Levene
     if len(trats_safe) > 1:
         grupo_combinado = df_calc[trats_safe].astype(str).agg(' + '.join, axis=1)
     else:
@@ -1289,9 +1305,9 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
 @st.cache_data(show_spinner=False)
 def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento, col_bloco=None):
     """
-    Analise Conjunta com Sanitização de Nomes.
+    Analise Conjunta com Sanitização de Nomes (Compatível com Python 3.13+).
     """
-    # Mapeamento Seguro
+    # 1. Mapeamento Seguro
     mapa_seguro = {}
     y_safe = "VAR_Y_SAFE"
     trat_safe = "TRAT_SAFE"
@@ -1306,6 +1322,9 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     df_calc = df.rename(columns=mapa_seguro).copy()
     res = {}
     
+    from patsy.contrasts import Sum
+
+    # 2. Montagem da Fórmula
     if delineamento == 'DBC':
         termos = f"C({trat_safe}, Sum) * C({local_safe}, Sum) + C({bloco_safe}, Sum):C({local_safe}, Sum)"
     else:
@@ -1313,6 +1332,7 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
         
     formula = f"{y_safe} ~ {termos}"
     
+    # 3. Execução
     try:
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
@@ -1320,13 +1340,14 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
-    # Restaura nomes no index
+    # 4. Restauração dos Nomes
     novo_index = []
     for idx in anova.index:
         idx_str = str(idx)
         for original, safe in mapa_seguro.items():
             if safe in idx_str:
-                idx_str = idx_str.replace(safe, f"Q('{original}')")
+                idx_str = idx_str.replace(f"C({safe}, Sum)", original)
+                idx_str = idx_str.replace(safe, original)
         novo_index.append(idx_str)
     anova.index = novo_index
         
@@ -1346,10 +1367,9 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     res['p_trat'] = 1.0
     res['p_interacao'] = 1.0
     
-    # Busca robusta
+    # Busca robusta pelos P-valores nos nomes originais (já restaurados)
     for idx in anova.index:
         nome = str(idx)
-        # Usa o nome original aqui pois já restauramos o index
         has_trat = col_trat_combo in nome
         has_local = col_local in nome
         has_interacao = ":" in nome or " x " in nome
@@ -1364,6 +1384,9 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
 # --- CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
 @st.cache_data(show_spinner=False)
 def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
+    """
+    Função auxiliar que reutiliza a rodar_analise_individual (agora segura).
+    """
     if EXIBIR_LOGS: print(f"⚖️ Verificando homogeneidade de variâncias entre locais...")
     
     locais = df[col_local].unique()
@@ -1372,7 +1395,7 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
     for loc in locais:
         df_loc = df[df[col_local] == loc]
         try:
-            # Chama a função individual (que agora é segura)
+            # Chama a função individual blindada
             res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
             mses.append(res['mse'])
         except:
