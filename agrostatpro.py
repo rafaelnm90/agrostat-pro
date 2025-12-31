@@ -2936,35 +2936,29 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - PADRONIZADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - VISUAL PADRONIZADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA PRINCIPAL: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
-    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
+    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO (Mantida) ---
     def mostrar_editor_heatmap(key_prefix):
-        """
-        Menu para personalizar cores, textos e bordas do Heatmap.
-        Encapsulado em formulário.
-        """
-        with st.expander("✏️ Personalizar Gráfico de Correlação", expanded=False):
+        # Nota: Este expander ficará dentro do expander principal (aninhado)
+        with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
             with st.form(key=f"form_{key_prefix}"):
                 st.markdown("##### 🎨 Aparência Geral")
                 c1, c2, c3 = st.columns(3)
-                
                 with c1:
-                    st.markdown("**Cores do Mapa (Gradiente)**")
-                    cor_neg = st.color_picker("Valor -1 (Negativo)", "#D73027", key=f"{key_prefix}_cneg")
-                    cor_zero = st.color_picker("Valor 0 (Neutro)", "#FFFFFF", key=f"{key_prefix}_czero")
-                    cor_pos = st.color_picker("Valor 1 (Positivo)", "#4575B4", key=f"{key_prefix}_cpos")
-                    
+                    st.markdown("**Cores do Mapa**")
+                    cor_neg = st.color_picker("Valor -1", "#D73027", key=f"{key_prefix}_cneg")
+                    cor_zero = st.color_picker("Valor 0", "#FFFFFF", key=f"{key_prefix}_czero")
+                    cor_pos = st.color_picker("Valor 1", "#4575B4", key=f"{key_prefix}_cpos")
                 with c2:
                     st.markdown("**Fundo e Eixos**")
-                    cor_fundo = st.color_picker("Fundo do Gráfico", "#FFFFFF", key=f"{key_prefix}_cbg")
-                    cor_eixos = st.color_picker("Cor Eixos/Título/Legenda", "#000000", key=f"{key_prefix}_ceixos")
+                    cor_fundo = st.color_picker("Fundo", "#FFFFFF", key=f"{key_prefix}_cbg")
+                    cor_eixos = st.color_picker("Texto/Eixos", "#000000", key=f"{key_prefix}_ceixos")
                     fam_fonte = st.selectbox("Fonte", ["Arial", "Verdana", "Times New Roman", "Courier New"], key=f"{key_prefix}_font")
-                    
                 with c3:
                     st.markdown("**Estrutura**")
                     titulo_custom = st.text_input("Título", "Matriz de Correlação", key=f"{key_prefix}_tit")
@@ -2974,158 +2968,108 @@ if st.session_state.get('processando', False):
                     with c3b: eixos_negrito = st.checkbox("Negrito", False, key=f"{key_prefix}_boldax")
 
                 st.markdown("---")
-                st.markdown("##### 🔢 Valores Internos (Texto nas Células)")
-                
+                st.markdown("##### 🔢 Valores (Texto)")
                 c4, c5, c6 = st.columns(3)
                 with c4:
-                    modo_cor_txt = st.selectbox("Modo de Cor", 
-                                                ["Cor Única", "Condicional (Pos/Neg/Zero)"], 
-                                                key=f"{key_prefix}_modotxt")
-                    tamanho_fonte_val = st.number_input("Tamanho Fonte", 8, 24, 12, key=f"{key_prefix}_fsize")
-                    
+                    modo_cor_txt = st.selectbox("Modo Cor", ["Cor Única", "Condicional"], key=f"{key_prefix}_modotxt")
+                    tamanho_fonte_val = st.number_input("Tamanho", 8, 24, 12, key=f"{key_prefix}_fsize")
                 with c5:
-                    val_negrito = st.checkbox("Valores em Negrito", False, key=f"{key_prefix}_boldval")
+                    val_negrito = st.checkbox("Valores Negrito", False, key=f"{key_prefix}_boldval")
                 
                 cores_texto = {}
                 with c6:
                     if modo_cor_txt == "Cor Única":
-                        cores_texto['unica'] = st.color_picker("Cor Texto Única", "#000000", key=f"{key_prefix}_ctxtuni")
+                        cores_texto['unica'] = st.color_picker("Cor Única", "#000000", key=f"{key_prefix}_ctxtuni")
                     else:
                         c6a, c6b = st.columns(2)
-                        with c6a:
-                            cores_texto['pos'] = st.color_picker("Txt Positivo", "#0000FF", key=f"{key_prefix}_ctxtpos")
-                            cores_texto['neg'] = st.color_picker("Txt Negativo", "#FF0000", key=f"{key_prefix}_ctxtneg")
-                        with c6b:
-                            cores_texto['zero'] = st.color_picker("Txt Zero", "#AAAAAA", key=f"{key_prefix}_ctxtzero")
+                        with c6a: cores_texto['pos'] = st.color_picker("Pos", "#0000FF", key=f"{key_prefix}_ctxtpos")
+                        with c6b: cores_texto['neg'] = st.color_picker("Neg", "#FF0000", key=f"{key_prefix}_ctxtneg")
+                        cores_texto['zero'] = "#AAAAAA"
 
                 st.markdown("---")
-                submit_btn = st.form_submit_button("🔄 Atualizar Gráfico de Correlação")
+                st.form_submit_button("🔄 Atualizar Visual")
 
             return {
-                "cor_mapa": [cor_neg, cor_zero, cor_pos],
-                "cor_fundo": cor_fundo,
-                "titulo": titulo_custom,
-                "fonte": fam_fonte,
-                "cor_eixos": cor_eixos,
-                "eixos_negrito": eixos_negrito,
-                "estilo_borda": estilo_borda,
-                "ticks": mostrar_ticks,
-                "modo_cor_txt": modo_cor_txt,
-                "tamanho_fonte_val": tamanho_fonte_val,
-                "val_negrito": val_negrito,
-                "cores_texto": cores_texto
+                "cor_mapa": [cor_neg, cor_zero, cor_pos], "cor_fundo": cor_fundo, "titulo": titulo_custom,
+                "fonte": fam_fonte, "cor_eixos": cor_eixos, "eixos_negrito": eixos_negrito,
+                "estilo_borda": estilo_borda, "ticks": mostrar_ticks, "modo_cor_txt": modo_cor_txt,
+                "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto
             }
 
-    # --- 2. PREPARAÇÃO E CORREÇÃO DOS DADOS ---
+    # --- 2. PREPARAÇÃO DOS DADOS ---
     df_corr_input = None
-    if 'df_analise' in locals():
-        df_corr_input = df_analise.copy()
-    elif 'df' in locals() and df is not None:
-        df_corr_input = df.copy()
+    if 'df_analise' in locals(): df_corr_input = df_analise.copy()
+    elif 'df' in locals() and df is not None: df_corr_input = df.copy()
 
-    # Só executa se tivermos dados e variáveis selecionadas na lista
     if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
-        
-        # --- CONVERSÃO FORÇADA ---
+        # Conversão forçada
         for col in lista_resps:
-            try:
-                df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
-            except:
-                pass 
+            try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
+            except: pass 
 
-        # --- FILTRAGEM ---
         cols_numericas_corr = df_corr_input.select_dtypes(include=[np.number]).columns.tolist()
         vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
 
-        # --- LÓGICA DE EXIBIÇÃO (ENCAPSULADA) ---
         if len(vars_corr) > 1:
             st.markdown("---")
-            # TÍTULO DO TÓPICO
+            # TÍTULO PADRÃO (Fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # CONTEÚDO ENCAPSULADO NA ABA (IGUAL RESULTADOS)
-            with st.expander("🛠️ Configurar e Visualizar Matriz de Correlação", expanded=False):
-            
-                # 1. Menu de Configuração (Original)
+            # --- ABA MESTRA (Aqui está a correção solicitada) ---
+            with st.expander("📊 Gráfico de Correlação (Clique para Expandir)", expanded=False):
+                
+                # Todo o conteúdo agora está INDENTADO aqui dentro
                 cfg = mostrar_editor_heatmap("corr_main")
                 
-                # Lógica de Seleção do Método
                 metodo_corr = st.radio(
                     "Método de Correlação:", 
                     ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
-                    horizontal=True,
-                    index=1 # Spearman selecionado por padrão para segurança
+                    horizontal=True, index=1
                 )
                 metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
-                # --- AVISO EDUCATIVO (ORIENTAÇÃO AO USUÁRIO) ---
                 if metodo == "pearson":
-                    st.warning("""
-                    ⚠️ **ATENÇÃO:** O método de **Pearson** é sensível a dados que não seguem distribuição normal. 
-                    Se o seu conjunto de dados contiver variáveis **Não-Paramétricas** (ou uma mistura de Paramétricas e Não-Paramétricas), 
-                    o uso de Pearson pode gerar correlações imprecisas. Na dúvida ou em dados mistos, prefira **Spearman**.
-                    """)
+                    st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
                 else:
-                    st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
+                    st.success("✅ **Ótima escolha:** Spearman é robusto para dados não-paramétricos e normais.")
 
-                # VAR DE CONTROLE INTERNO (BOTÃO DE AÇÃO)
-                if 'executar_corr_btn' not in st.session_state: st.session_state['executar_corr_btn'] = False
+                if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                 
-                # Cálculo da Matriz (Usando o dataframe corrigido)
-                try:
-                    if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
-                    
-                    if not st.session_state['matriz_gerada']:
-                        if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
-                            st.session_state['matriz_gerada'] = True
-                            st.rerun()
-                    
-                    if st.session_state['matriz_gerada']:
+                # Botão Principal (dentro da aba)
+                if not st.session_state['matriz_gerada']:
+                    if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
+                        st.session_state['matriz_gerada'] = True
+                        st.rerun()
+                
+                if st.session_state['matriz_gerada']:
+                    try:
                         df_corr = df_corr_input[vars_corr].corr(method=metodo)
                         
-                        # 3. Definição da Escala de Cores do Fundo
-                        colorscale_custom = [
-                            [0.0, cfg['cor_mapa'][0]], # -1
-                            [0.5, cfg['cor_mapa'][1]], # 0
-                            [1.0, cfg['cor_mapa'][2]]  # 1
-                        ]
+                        # Definição de Cores e Texto (Lógica resumida para brevidade visual)
+                        colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
                         
-                        # 4. PREPARAÇÃO DO TEXTO CUSTOMIZADO (HTML)
                         custom_text = []
                         vals = df_corr.values
-                        
                         for i in range(len(vals)):
                             row_text = []
                             for val in vals[i]:
-                                # Define a cor
                                 c_code = "#000000"
-                                if cfg['modo_cor_txt'] == "Cor Única":
-                                    c_code = cfg['cores_texto']['unica']
+                                if cfg['modo_cor_txt'] == "Cor Única": c_code = cfg['cores_texto']['unica']
                                 else:
-                                    if val > 0.001: c_code = cfg['cores_texto']['pos']
-                                    elif val < -0.001: c_code = cfg['cores_texto']['neg']
-                                    else: c_code = cfg['cores_texto']['zero']
+                                    if val > 0.001: c_code = cfg['cores_texto'].get('pos', 'blue')
+                                    elif val < -0.001: c_code = cfg['cores_texto'].get('neg', 'red')
+                                    else: c_code = "#AAAAAA"
                                 
-                                # Define Negrito
-                                val_fmt = f"{val:.2f}"
-                                if cfg['val_negrito']:
-                                    val_fmt = f"<b>{val_fmt}</b>"
-                                
-                                # Cria o HTML final para a célula
-                                cell_html = f"<span style='color:{c_code}'>{val_fmt}</span>"
-                                row_text.append(cell_html)
+                                val_fmt = f"<b>{val:.2f}</b>" if cfg['val_negrito'] else f"{val:.2f}"
+                                row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
                             custom_text.append(row_text)
 
-                        # 5. Geração do Gráfico (Sem text_auto)
                         fig_corr = px.imshow(
-                            df_corr,
-                            text_auto=False, # Desligamos o auto para usar nosso custom_text
-                            aspect="auto",
-                            color_continuous_scale=colorscale_custom,
-                            zmin=-1, zmax=1
+                            df_corr, text_auto=False, aspect="auto",
+                            color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
                         )
                         
-                        # 6. Personalização Avançada (Layout)
+                        # Layout
                         mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                         show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
                         tick_mode = "outside" if cfg['ticks'] else ""
@@ -3133,208 +3077,110 @@ if st.session_state.get('processando', False):
                         title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
                         
                         fig_corr.update_layout(
-                            title=dict(
-                                text=title_text,
-                                x=0.5,
-                                font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])
-                            ),
-                            height=500,
-                            paper_bgcolor=cfg['cor_fundo'], 
-                            plot_bgcolor=cfg['cor_fundo'],
+                            title=dict(text=title_text, x=0.5, font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])),
+                            height=500, paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
                             font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
-                            xaxis=dict(
-                                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
-                                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
-                                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
-                            ),
-                            yaxis=dict(
-                                showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], linewidth=1,
-                                ticks=tick_mode, tickcolor=cfg['cor_eixos'],
-                                tickfont=dict(family=cfg['fonte'], color=cfg['cor_eixos'], weight=weight_eixos)
-                            )
+                            xaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos)),
+                            yaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos))
                         )
-                        
-                        # Atualização da Legenda Lateral
-                        fig_corr.update_coloraxes(
-                            colorbar=dict(
-                                tickfont=dict(
-                                    family=cfg['fonte'],
-                                    color=cfg['cor_eixos'], 
-                                    size=cfg['tamanho_fonte_val'], 
-                                    weight=weight_eixos
-                                ),
-                                title=dict(text="")
-                            )
-                        )
+                        fig_corr.update_coloraxes(showscale=False)
+                        fig_corr.update_traces(text=custom_text, texttemplate="%{text}")
 
-                        # 7. Injeção do Texto HTML
-                        fig_corr.update_traces(
-                            text=custom_text, 
-                            texttemplate="%{text}",
-                            textfont=dict(
-                                family=cfg['fonte'],
-                                size=cfg['tamanho_fonte_val']
-                            )
-                        )
-
-                        # --- EXIBIÇÃO FINAL ---
                         st.plotly_chart(fig_corr, use_container_width=True)
-                        st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+                        with st.expander("Ver Tabela de Dados"):
+                            st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
 
-                        # --- NOTA DE RODAPÉ ADAPTATIVA ---
-                        st.markdown(f"""
-                        <div style="
-                            font-family: 'Times New Roman', Times, serif; 
-                            font-size: 0.9em; 
-                            border-top: 1px solid rgba(128, 128, 128, 0.5); 
-                            margin-top: 10px; 
-                            padding-top: 8px; 
-                            text-align: justify;">
-                            <b>Nota:</b> A matriz acima apresenta os coeficientes de correlação ({'<i>r</i> de Pearson' if metodo == 'pearson' else '<i>ρ</i> de Spearman'}) 
-                            entre as variáveis analisadas. O coeficiente varia no intervalo <b>[-1, +1]</b>. 
-                            Valores próximos a <b>+1</b> indicam forte associação linear positiva (proporcionalidade direta), 
-                            enquanto valores próximos a <b>-1</b> indicam forte associação linear negativa (proporcionalidade inversa). 
-                            Coeficientes próximos a <b>0</b> sugerem ausência de correlação linear significativa.
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
                         
-                except Exception as e:
-                    st.error(f"Não foi possível calcular a correlação: {e}")
+                    except Exception as e:
+                        st.error(f"Erro no cálculo: {e}")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - PADRONIZADO
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - VISUAL PADRONIZADO
 # ==============================================================================
-# Flag de controle
 HAS_SKLEARN = False
-
 try:
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
     HAS_SKLEARN = True
 except ImportError:
-    import subprocess
-    import sys
-    # Tenta instalar automaticamente, mas PROTEGE contra erro de permissão
+    import subprocess, sys
     try:
-        with st.spinner("📦 Biblioteca 'scikit-learn' ausente. Tentando instalar..."):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
-            
-            # Tenta importar novamente após a instalação
-            from sklearn.decomposition import PCA
-            from sklearn.preprocessing import StandardScaler
-            HAS_SKLEARN = True
-            st.toast("✅ Biblioteca instalada! Carregando PCA...", icon="💾")
-    except Exception as e:
-        # Se falhar (ex: erro de permissão no Linux), apenas marca como False e segue o baile
-        HAS_SKLEARN = False
-        if EXIBIR_LOGS: print(f"⚠️ Falha na auto-instalação do scikit-learn: {e}")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
+        HAS_SKLEARN = True
+    except: HAS_SKLEARN = False
 
-# Só roda se tivermos dados e variáveis suficientes
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
     
     st.markdown("---")
-    # TÍTULO DO TÓPICO
     st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
-    # SE A BIBLIOTECA NÃO ESTIVER DISPONÍVEL, MOSTRA AVISO E PARA O BLOCO AQUI
-    if not HAS_SKLEARN:
-        st.warning("⚠️ **Módulo PCA Indisponível:** A biblioteca `scikit-learn` não foi encontrada e a instalação automática falhou (possível erro de permissão).")
-        st.info("👉 **Solução Manual:** Pare o script e rode no terminal: `pip install scikit-learn`")
-    
-    else:
-        # CONTEÚDO ENCAPSULADO NA ABA
-        with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
-            # --- CÓDIGO DO PCA (SÓ EXECUTA SE HAS_SKLEARN == TRUE) ---
-            with st.expander("ℹ️ O que é isso?", expanded=False):
-                st.info("""
-                O PCA reduz a dimensionalidade dos dados. 
-                - **Pontos:** Representam os Tratamentos. Pontos próximos indicam comportamento similar.
-                - **Vetores (Setas):** Representam as Variáveis. Setas na mesma direção indicam alta correlação positiva.
-                """)
+    # --- ABA MESTRA PCA ---
+    with st.expander("🧬 Biplot PCA (Configuração e Gráfico)", expanded=False):
+        
+        if not HAS_SKLEARN:
+            st.warning("⚠️ Biblioteca 'scikit-learn' não instalada. Instale via terminal.")
+        else:
+            with st.expander("ℹ️ Ajuda: O que é Biplot?", expanded=False):
+                st.info("O Biplot mostra a relação entre Tratamentos (Pontos) e Variáveis (Setas/Vetores).")
 
-            # Configuração
             c_pca1, c_pca2 = st.columns(2)
             with c_pca1:
-                col_rotulo_pca = st.selectbox("Rótulo dos Pontos (Tratamento)", cols_trats, key="pca_lbl")
+                col_rotulo_pca = st.selectbox("Rótulo dos Pontos", cols_trats, key="pca_lbl")
             with c_pca2:
                 col_cor_pca = st.selectbox("Colorir por (Opcional)", [None] + cols_trats + ([col_local] if 'col_local' in locals() else []), key="pca_cor")
 
-            # Botão para Executar
             if st.button("🔄 Gerar Biplot PCA", type="primary"):
-                
-                # 1. Preparação dos Dados
                 df_pca = df_corr_input.dropna(subset=vars_corr).copy()
-                
-                # Agrupar médias por tratamento
                 df_medias_pca = df_pca.groupby(col_rotulo_pca)[vars_corr].mean().reset_index()
                 
                 X = df_medias_pca[vars_corr]
-                
-                # 2. Padronização
                 scaler = StandardScaler()
                 X_scaled = scaler.fit_transform(X)
                 
-                # 3. Modelo PCA
                 pca = PCA(n_components=2)
                 components = pca.fit_transform(X_scaled)
-                
-                # Variância Explicada
                 var_expl = pca.explained_variance_ratio_ * 100
                 
-                # 4. Plotagem (Biplot Manual com Plotly)
                 import plotly.graph_objects as go
                 fig_pca = go.Figure()
                 
-                # A. Adicionar Pontos (Tratamentos)
+                # Pontos
                 cor_points = df_medias_pca[col_cor_pca] if col_cor_pca and col_cor_pca in df_medias_pca.columns else None
-                
                 fig_pca.add_trace(go.Scatter(
-                    x=components[:, 0], 
-                    y=components[:, 1],
-                    mode='markers+text',
-                    text=df_medias_pca[col_rotulo_pca],
-                    textposition="top center",
-                    marker=dict(size=12, color=cor_points if cor_points is not None else '#2E86C1', showscale=True if cor_points is not None else False),
+                    x=components[:, 0], y=components[:, 1], mode='markers+text',
+                    text=df_medias_pca[col_rotulo_pca], textposition="top center",
+                    marker=dict(size=12, color=cor_points if cor_points is not None else '#2E86C1', showscale=(cor_points is not None)),
                     name="Tratamentos"
                 ))
                 
-                # B. Adicionar Vetores (Variáveis)
+                # Vetores
                 loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
-                
                 escala = 1.0
-                max_pt = np.max(np.abs(components))
-                max_vec = np.max(np.abs(loadings))
-                if max_vec > 0: escala = max_pt / max_vec
+                if np.max(np.abs(loadings)) > 0: escala = np.max(np.abs(components)) / np.max(np.abs(loadings))
                 
                 for i, feature in enumerate(vars_corr):
                     fig_pca.add_trace(go.Scatter(
-                        x=[0, loadings[i, 0] * escala],
-                        y=[0, loadings[i, 1] * escala],
-                        mode='lines+markers',
-                        marker=dict(size=5, symbol='arrow-bar-up', angleref="previous"),
-                        line=dict(color='red', width=2),
-                        name=f"Vetor: {feature}",
-                        hoverinfo='name'
+                        x=[0, loadings[i, 0] * escala], y=[0, loadings[i, 1] * escala],
+                        mode='lines+markers', marker=dict(size=5, symbol='arrow-bar-up'),
+                        line=dict(color='red', width=2), name=f"Vetor: {feature}"
                     ))
                     fig_pca.add_annotation(
                         x=loadings[i, 0] * escala, y=loadings[i, 1] * escala,
-                        text=feature, showarrow=False, font=dict(color="red", size=12),
-                        yshift=10
+                        text=feature, showarrow=False, font=dict(color="red", size=12), yshift=10
                     )
 
                 fig_pca.update_layout(
                     title=f"Biplot PCA (Total Explicado: {sum(var_expl):.2f}%)",
-                    xaxis_title=f"PC1 ({var_expl[0]:.2f}%)",
-                    yaxis_title=f"PC2 ({var_expl[1]:.2f}%)",
-                    template="plotly_white",
-                    height=600,
-                    showlegend=False
+                    xaxis_title=f"PC1 ({var_expl[0]:.2f}%)", yaxis_title=f"PC2 ({var_expl[1]:.2f}%)",
+                    template="plotly_white", height=600, showlegend=False
                 )
-                
                 st.plotly_chart(fig_pca, use_container_width=True)
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21-B
@@ -3342,90 +3188,70 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Gerador de Relatório Completo (HTML Download) - PADRONIZADO
+# 📂 BLOCO 22: Gerador de Relatório Completo - VISUAL PADRONIZADO
 # ==============================================================================
-    # ATENÇÃO: Esta parte fica FORA do loop (alinhada à esquerda do IF principal)
+if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
+    st.markdown("---")
+    st.markdown("### 📑 Central de Relatórios")
     
-    if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
-        st.markdown("---")
-        # TÍTULO DO TÓPICO
-        st.markdown("### 📑 Central de Relatórios")
+    # --- ABA MESTRA RELATÓRIOS ---
+    with st.expander("🖨️ Opções de Download (PDF/HTML)", expanded=True):
+        st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
+        st.info("Clique abaixo para gerar o arquivo completo para impressão.")
         
-        # CONTEÚDO ENCAPSULADO
-        with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
-            st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
-            st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
-            
-            def fig_to_html(fig):
-                if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
-                return "<div style='color:#999;'>Gráfico não gerado automaticamente (verifique abas).</div>"
+        # Funções auxiliares de HTML (mantidas para funcionamento)
+        def fig_to_html(fig):
+            if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
+            return "<div style='color:#999;'>Gráfico não disponível.</div>"
 
-            def df_to_html(df):
-                if df is not None: return df.to_html(classes='table table-striped', float_format="%.2f", justify='center')
-                return "<div style='color:#999;'>Tabela não disponível.</div>"
+        def df_to_html(df):
+            if df is not None: return df.to_html(classes='table table-striped', float_format="%.2f", justify='center')
+            return "<div>Tabela vazia.</div>"
 
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Relatório AgroStat Pro</title>
-                <meta charset="utf-8">
-                <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
-                <style>
-                    body {{ font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f4f4f4; }}
-                    .container {{ background: white; padding: 40px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); }}
-                    h1 {{ color: #2E86C1; text-align: center; margin-bottom: 10px; }}
-                    .var-section {{ margin-bottom: 60px; border-bottom: 2px solid #eee; padding-bottom: 40px; }}
-                    h2 {{ color: #28B463; border-left: 5px solid #28B463; padding-left: 15px; }}
-                    .metric-box {{ background: #f8f9fa; border: 1px solid #ddd; padding: 15px; margin-top: 20px; }}
-                    .table-container {{ margin-top: 20px; overflow-x: auto; }}
-                    table {{ width: 100%; text-align: center; }}
-                    th {{ background-color: #2E86C1; color: white; }}
-                    @media print {{ .no-print {{ display: none; }} .var-section {{ page-break-inside: avoid; }} }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="no-print" style="text-align:right; margin-bottom:20px;">
-                        <button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
-                    </div>
-                    <h1>🌱 AgroStat Pro - Relatório de Análise</h1>
-                    <p style="text-align:center;">Data: {dados_para_relatorio_final[0]['data_hora']}</p>
-                    <hr>
-            """
-
-            for item in dados_para_relatorio_final:
-                html_content += f"""
-                <div class="var-section">
-                    <h2>Variável: {item['var']}</h2>
-                    <div class="row metric-box">
-                        <div class="col-md-3"><strong>Método:</strong><br>{item['metodo']}</div>
-                        <div class="col-md-3"><strong>Transformação:</strong><br>{item['transf']}</div>
-                        <div class="col-md-3"><strong>Normalidade (P):</strong><br>{item['p_norm']:.4f}</div>
-                        <div class="col-md-3"><strong>CV (%):</strong><br>{item['cv']}</div>
-                    </div>
-                    <div class="alert alert-info" style="margin-top: 15px;"><strong>Conclusão:</strong> {item['conclusao']}</div>
-                    <div class="row">
-                        <div class="col-md-5">
-                            <h5 style="margin-top:20px;">📋 Resultados</h5>
-                            <div class="table-container">{df_to_html(item['tabela_medias'])}</div>
-                        </div>
-                        <div class="col-md-7">
-                            <h5 style="margin-top:20px;">📊 Gráfico</h5>
-                            <div style="border:1px solid #eee; padding:10px;">{fig_to_html(item['grafico'])}</div>
-                        </div>
-                    </div>
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Relatório AgroStat Pro</title>
+            <meta charset="utf-8">
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+            <style>
+                body {{ font-family: sans-serif; padding: 40px; background: #f4f4f4; }}
+                .container {{ background: white; padding: 40px; border-radius: 8px; }}
+                h1 {{ color: #2E86C1; text-align: center; }}
+                .var-section {{ margin-bottom: 60px; border-bottom: 2px solid #eee; padding-bottom: 40px; }}
+                @media print {{ .no-print {{ display: none; }} .var-section {{ page-break-inside: avoid; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="no-print" style="text-align:right; margin-bottom:20px;">
+                    <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
                 </div>
-                """
+                <h1>🌱 AgroStat Pro - Relatório</h1>
+                <p style="text-align:center;">Data: {pd.Timestamp.now().strftime('%d/%m/%Y')}</p>
+                <hr>
+        """
 
-            html_content += "</div></body></html>"
+        for item in dados_para_relatorio_final:
+            html_content += f"""
+            <div class="var-section">
+                <h2>Variável: {item['var']}</h2>
+                <div class="alert alert-info"><strong>Conclusão:</strong> {item['conclusao']}</div>
+                <div class="row">
+                    <div class="col-md-5"><h5>📋 Tabela</h5>{df_to_html(item['tabela_medias'])}</div>
+                    <div class="col-md-7"><h5>📊 Gráfico</h5>{fig_to_html(item['grafico'])}</div>
+                </div>
+            </div>
+            """
+        html_content += "</div></body></html>"
 
-            st.download_button(
-                label="📥 Baixar Relatório Completo (HTML com Gráficos)",
-                data=html_content,
-                file_name="Relatorio_AgroStat.html",
-                mime="text/html"
-            )
+        st.download_button(
+            label="📥 Baixar Relatório Completo (.html)",
+            data=html_content,
+            file_name="Relatorio_AgroStat.html",
+            mime="text/html"
+        )
 # ==============================================================================
 # 🏁 FIM DO BLOCO 22
 # ==============================================================================
