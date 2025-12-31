@@ -2909,7 +2909,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - VISUAL LIMPO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - TUDO ENCAPSULADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
@@ -2988,7 +2988,7 @@ if st.session_state.get('processando', False):
             # TÍTULO (Fica visível fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # ===> AQUI ESTÁ A MUDANÇA: CRIAÇÃO DA ABA MESTRA <===
+            # ===> ABA MESTRA <===
             # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
             with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
                 
@@ -2997,11 +2997,11 @@ if st.session_state.get('processando', False):
                 
                 st.write("") # Espaço
                 
-                # 2. Seletor de Método (Agora dentro da aba)
+                # 2. Seletor de Método (Spearman Primeiro)
                 metodo_corr = st.radio(
                     "Método de Correlação:", 
-                    ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
-                    horizontal=True, index=1
+                    ["Spearman (Não-Paramétrico)", "Pearson (Paramétrico)"], 
+                    horizontal=True, index=0
                 )
                 metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
