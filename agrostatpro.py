@@ -1711,7 +1711,8 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 col_trat = col_combo
 
                 # 1. Inicialização da Memória de Exclusão (Lixeira)
-                key_outliers = f"outliers_removidos_{col_resp}_{i}"
+                key_outliers = f"outliers_removidos_{col_resp_original}_{i}"
+                
                 if key_outliers not in st.session_state:
                     st.session_state[key_outliers] = []
 
@@ -1737,14 +1738,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     st.markdown("---")
                     # Título de Alerta
                     if not outliers_ativos.empty:
-                        st.error(f"🕵️ **AUDITORIA DE DADOS:** Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
+                        st.error(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
                     else:
-                        st.success(f"🕵️ **AUDITORIA DE DADOS:** Dados limpos! ({len(indices_removidos)} valores removidos).")
+                        st.success(f"AUDITORIA DE DADOS: Dados limpos! ({len(indices_removidos)} valores removidos).")
 
-                    # --- ALTERAÇÃO AQUI: NOVO TÍTULO DO EXPANDER ---
                     with st.expander("🕵️ Gerenciar Outliers (Limpeza e Restauração)", expanded=True):
                         
-                        # --- 1. AVISO AMARELO (GUIA DE DECISÃO) ---
+                        # --- 1. AVISO AMARELO (GUIA DE DECISÃO - RESTAURADO) ---
                         st.warning("""
                         ### PARE E LEIA ANTES DE REMOVER!
                         A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
@@ -1762,7 +1762,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
                         """, icon="⚠️")
 
-                        # --- 2. AVISO AZUL (METODOLOGIA + VALORES ESPECÍFICOS) ---
+                        # --- 2. AVISO AZUL (METODOLOGIA - RESTAURADO) ---
                         st.info(f"""
                         **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
                         
@@ -1771,22 +1771,29 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         """)
                         
                         st.markdown("---")
-
+                        
                         tab_clean, tab_restore = st.tabs(["🧹 Limpar Novos", "♻️ Restaurar Removidos"])
                         
                         # --- ABA 1: LIMPEZA ---
                         with tab_clean:
                             if not outliers_ativos.empty:
-                                df_show = outliers_ativos[[col_trat, col_resp]].copy()
-                                df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo' if x < limite_inferior else 'Muito Alto')
-                                df_show['Sugestao'] = 'Verificar Erro'
-                                df_show['Contexto'] = 'Extremo'
-                                df_show['Variável'] = col_resp
-                                df_show['Valor Lido'] = df_show[col_resp]
-                                df_show['Esperado (Faixa)'] = f"{limite_inferior:.2f} a {limite_superior:.2f}"
+                                # Recupera colunas de identificação (Tratamentos) e Valor
+                                cols_identificacao = cols_trats # Ex: ['Genotipo', 'Dose']
+                                cols_dados = [col_resp]
+                                
+                                df_show = outliers_ativos[cols_identificacao + cols_dados].copy()
+                                
+                                # 1. Diagnóstico e Sugestão
+                                df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo 📉' if x < limite_inferior else 'Muito Alto 📈')
+                                df_show['Sugestao'] = 'Verificar Erro' 
+                                
+                                # 2. Formatação precisa
+                                df_show['Valor Lido'] = df_show[col_resp].apply(lambda x: float(f"{x:.4f}"))
+                                df_show['Esperado (Faixa)'] = f"{limite_inferior:.4f} a {limite_superior:.4f}"
                                 df_show['Confirmar Remoção'] = False 
 
-                                cols_order = ['Diagnostico', 'Sugestao', 'Contexto', 'Variável', 'Valor Lido', 'Esperado (Faixa)', 'Confirmar Remoção']
+                                # Define ordem: Identificação -> Valor -> Diagnóstico -> Sugestão -> Checkbox
+                                cols_order = cols_identificacao + ['Valor Lido', 'Esperado (Faixa)', 'Diagnostico', 'Sugestao', 'Confirmar Remoção']
                                 
                                 edited_df = st.data_editor(
                                     df_show[cols_order],
@@ -1797,8 +1804,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                             default=False,
                                         ),
                                     },
-                                    disabled=['Diagnostico', 'Sugestao', 'Contexto', 'Variável', 'Valor Lido', 'Esperado (Faixa)'],
-                                    hide_index=False,
+                                    # Bloqueia edição de tudo exceto o checkbox
+                                    disabled=cols_identificacao + ['Diagnostico', 'Sugestao', 'Valor Lido', 'Esperado (Faixa)'],
+                                    hide_index=True, 
                                     key=f"editor_out_{col_resp}_{i}"
                                 )
 
@@ -1814,7 +1822,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         with tab_restore:
                             if len(indices_removidos) > 0:
                                 st.warning("Estes dados foram excluídos da análise. Selecione para restaurar.")
-                                df_removidos = df_proc.loc[indices_removidos, [col_trat, col_resp]]
+                                
+                                cols_identificacao = cols_trats
+                                df_removidos = df_proc.loc[indices_removidos, cols_identificacao + [col_resp]]
                                 df_removidos['Restaurar'] = False
                                 
                                 restore_editor = st.data_editor(
