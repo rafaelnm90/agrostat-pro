@@ -1196,64 +1196,87 @@ from patsy.contrasts import Sum
 def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=None):
     """
     Roda ANOVA Individual Dinâmica (Suporta Fatorial).
-    Recebe: cols_trats (LISTA de colunas).
+    Usa mapeamento de nomes seguros para evitar SyntaxError no Patsy.
     """
-    df_calc = df.copy()
-    res = {}
+    # 1. Mapeamento para Nomes Seguros (Evita erro de sintaxe com aspas/espaços)
+    mapa_seguro = {}
+    col_y_safe = "VAR_RESP_SAFE"
+    mapa_seguro[col_resp] = col_y_safe
     
-    # 1. Montagem Dinâmica da Fórmula com Proteção Q() para caracteres especiais (%, espaços)
-    # O operador '*' no Patsy gera automaticamente Efeitos Principais + Interações
-    # Q('Nome') protege nomes com espaços, %, -, etc.
-    termos_trats = [f"C(Q('{trat}'), Sum)" for trat in cols_trats]
+    trats_safe = []
+    for i, t in enumerate(cols_trats):
+        nome_safe = f"FAT_{i}_SAFE"
+        mapa_seguro[t] = nome_safe
+        trats_safe.append(nome_safe)
+        
+    bloco_safe = "BLOCO_SAFE"
+    if delineamento == 'DBC':
+        mapa_seguro[col_bloco] = bloco_safe
+
+    # Cria DataFrame com nomes limpos apenas para o cálculo
+    df_calc = df.rename(columns=mapa_seguro).copy()
+    
+    # 2. Montagem da Fórmula (Sem necessidade de Q(), pois nomes são seguros)
+    termos_trats = [f"C({ts}, Sum)" for ts in trats_safe]
     formula_trats = " * ".join(termos_trats)
     
     if delineamento == 'DBC': 
-        formula = f"Q('{col_resp}') ~ {formula_trats} + C(Q('{col_bloco}'), Sum)"
+        formula = f"{col_y_safe} ~ {formula_trats} + C({bloco_safe}, Sum)"
     else: 
-        formula = f"Q('{col_resp}') ~ {formula_trats}"
+        formula = f"{col_y_safe} ~ {formula_trats}"
     
-    # 2. Execução do Modelo
+    res = {}
+    
+    # 3. Execução do Modelo
     try:
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=3)
     except:
-        # Fallback para typ=1 se typ=3 falhar (raro, mas possível em dados desbalanceados)
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
+    # 4. Restauração dos Nomes Originais na Tabela ANOVA
+    # Substitui os nomes seguros (FAT_0_SAFE) pelos reais com wrapper Q('') para compatibilidade visual
+    novo_index = []
+    for idx in anova.index:
+        idx_str = str(idx)
+        for original, safe in mapa_seguro.items():
+            if safe in idx_str:
+                # Reconstrói a string visual como se o Patsy tivesse funcionado com Q()
+                idx_str = idx_str.replace(safe, f"Q('{original}')")
+        novo_index.append(idx_str)
+    anova.index = novo_index
+
     res['anova'] = anova
     res['modelo'] = modelo
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     
-    # 3. Extração do P-valor (Busca o P-valor da interação de maior ordem ou do fator único)
+    # 5. Extração do P-valor (Busca robusta)
     try:
         if len(cols_trats) == 1:
-            # Procura por strings parciais pois o Q('') altera o nome no index
+            # Pega o primeiro índice que contém o nome do tratamento (agora restaurado)
             idx_found = [ix for ix in anova.index if f"Q('{cols_trats[0]}')" in str(ix)][0]
             res['p_val'] = anova.loc[idx_found, "PR(>F)"]
         else:
-            # Tenta pegar a interação total (ex: A:B:C)
-            # Conta quantos ':' tem no index para achar a interação de maior ordem
             target_depth = len(cols_trats) - 1
+            res['p_val'] = 1.0
             for idx in anova.index:
-                if str(idx).count(":") == target_depth and "Residual" not in str(idx):
+                if str(idx).count(":") == target_depth and "Residual" not in str(idx) and "BLOCO_SAFE" not in str(idx):
                       res['p_val'] = anova.loc[idx, "PR(>F)"]
                       break
-            if 'p_val' not in res: res['p_val'] = 1.0
     except:
-        res['p_val'] = 1.0 # Fallback seguro
+        res['p_val'] = 1.0
 
-    # 4. Pressupostos
+    # 6. Pressupostos (Usando dados originais mapeados)
     res['shapiro'] = stats.shapiro(modelo.resid)
     
-    # Para Bartlett/Levene em Fatorial, precisamos criar um grupo único combinado
-    if len(cols_trats) > 1:
-        grupo_combinado = df_calc[cols_trats].astype(str).agg(' + '.join, axis=1)
+    if len(trats_safe) > 1:
+        grupo_combinado = df_calc[trats_safe].astype(str).agg(' + '.join, axis=1)
     else:
-        grupo_combinado = df_calc[cols_trats[0]]
+        grupo_combinado = df_calc[trats_safe[0]]
         
-    grupos_vals = [g[col_resp].values for _, g in df_calc.assign(temp_group=grupo_combinado).groupby('temp_group')]
+    grupos_vals = [g[col_y_safe].values for _, g in df_calc.assign(temp_group=grupo_combinado).groupby('temp_group')]
     
     try: res['bartlett'] = stats.bartlett(*grupos_vals)
     except: res['bartlett'] = (0, np.nan)
@@ -1266,19 +1289,29 @@ def rodar_analise_individual(df, cols_trats, col_resp, delineamento, col_bloco=N
 @st.cache_data(show_spinner=False)
 def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento, col_bloco=None):
     """
-    Para conjunta, usaremos a estratégia da 'Coluna Sintética' (col_trat_combo) 
-    para simplificar a interação Tripla (Local x FatorA x FatorB).
+    Analise Conjunta com Sanitização de Nomes.
     """
-    df_calc = df.copy()
+    # Mapeamento Seguro
+    mapa_seguro = {}
+    y_safe = "VAR_Y_SAFE"
+    trat_safe = "TRAT_SAFE"
+    local_safe = "LOCAL_SAFE"
+    bloco_safe = "BLOCO_SAFE"
+    
+    mapa_seguro[col_resp] = y_safe
+    mapa_seguro[col_trat_combo] = trat_safe
+    mapa_seguro[col_local] = local_safe
+    if delineamento == 'DBC': mapa_seguro[col_bloco] = bloco_safe
+    
+    df_calc = df.rename(columns=mapa_seguro).copy()
     res = {}
     
-    # Proteção Q() aplicada aqui também
     if delineamento == 'DBC':
-        termos = f"C(Q('{col_trat_combo}'), Sum) * C(Q('{col_local}'), Sum) + C(Q('{col_bloco}'), Sum):C(Q('{col_local}'), Sum)"
+        termos = f"C({trat_safe}, Sum) * C({local_safe}, Sum) + C({bloco_safe}, Sum):C({local_safe}, Sum)"
     else:
-        termos = f"C(Q('{col_trat_combo}'), Sum) * C(Q('{col_local}'), Sum)"
+        termos = f"C({trat_safe}, Sum) * C({local_safe}, Sum)"
         
-    formula = f"Q('{col_resp}') ~ {termos}"
+    formula = f"{y_safe} ~ {termos}"
     
     try:
         modelo = ols(formula, data=df_calc).fit()
@@ -1287,13 +1320,23 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
         modelo = ols(formula, data=df_calc).fit()
         anova = sm.stats.anova_lm(modelo, typ=1)
         
+    # Restaura nomes no index
+    novo_index = []
+    for idx in anova.index:
+        idx_str = str(idx)
+        for original, safe in mapa_seguro.items():
+            if safe in idx_str:
+                idx_str = idx_str.replace(safe, f"Q('{original}')")
+        novo_index.append(idx_str)
+    anova.index = novo_index
+        
     res['anova'] = anova
     res['modelo'] = modelo
     res['mse'] = modelo.mse_resid
     res['df_resid'] = modelo.df_resid
     res['shapiro'] = stats.shapiro(modelo.resid)
     
-    grupos = [g[col_resp].values for _, g in df_calc.groupby(col_trat_combo)]
+    grupos = [g[y_safe].values for _, g in df_calc.groupby(trat_safe)]
     try: res['bartlett'] = stats.bartlett(*grupos)
     except: res['bartlett'] = (0, np.nan)
         
@@ -1303,13 +1346,13 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
     res['p_trat'] = 1.0
     res['p_interacao'] = 1.0
     
-    # Busca robusta pelos P-valores (Considerando a sintaxe Q('...'))
+    # Busca robusta
     for idx in anova.index:
         nome = str(idx)
-        # Verifica se contém o nome da coluna (ignora a sintaxe exata do Q wrapper na busca substring)
+        # Usa o nome original aqui pois já restauramos o index
         has_trat = col_trat_combo in nome
         has_local = col_local in nome
-        has_interacao = ":" in nome
+        has_interacao = ":" in nome or " x " in nome
         
         if has_trat and not has_local and not has_interacao:
             res['p_trat'] = anova.loc[idx, "PR(>F)"]
@@ -1321,10 +1364,6 @@ def rodar_analise_conjunta(df, col_trat_combo, col_resp, col_local, delineamento
 # --- CÁLCULO DE HOMOGENEIDADE PARA CONJUNTA ---
 @st.cache_data(show_spinner=False)
 def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delineamento):
-    """
-    Calcula a razão entre o maior e o menor MSE dos locais individuais.
-    Retorna: (Razão, Maior_MSE, Menor_MSE)
-    """
     if EXIBIR_LOGS: print(f"⚖️ Verificando homogeneidade de variâncias entre locais...")
     
     locais = df[col_local].unique()
@@ -1332,25 +1371,21 @@ def calcular_homogeneidade(df, col_trat, col_resp, col_local, col_bloco, delinea
     
     for loc in locais:
         df_loc = df[df[col_local] == loc]
-        # Roda a análise individual para pegar o MSE (QMRes)
-        # Nota: Passamos [col_trat] como lista porque a função individual espera lista
         try:
+            # Chama a função individual (que agora é segura)
             res = rodar_analise_individual(df_loc, [col_trat], col_resp, delineamento, col_bloco)
             mses.append(res['mse'])
         except:
-            pass # Ignora locais com erro (ex: variância zero)
+            pass 
         
     if not mses: return 0, 0, 0
     
     max_mse = max(mses)
     min_mse = min(mses)
     
-    if min_mse == 0: return 999, max_mse, min_mse # Evita divisão por zero
+    if min_mse == 0: return 999, max_mse, min_mse
     
     razao = max_mse / min_mse
-    
-    if EXIBIR_LOGS: print(f"⚖️ Razão MSE: {razao:.2f} (Max: {max_mse:.4f}, Min: {min_mse:.4f})")
-    
     return razao, max_mse, min_mse
 # ==============================================================================
 # 🏁 FIM DO BLOCO 11
