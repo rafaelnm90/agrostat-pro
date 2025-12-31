@@ -2909,11 +2909,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - TUDO ENCAPSULADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - VISUAL LIMPO
 # ==============================================================================
+
+# TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
+    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
     def mostrar_editor_heatmap(key_prefix):
+        # Este expander ficará dentro da aba principal (aninhado)
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
             with st.form(key=f"form_{key_prefix}"):
                 st.markdown("##### 🎨 Aparência Geral")
@@ -2965,11 +2969,13 @@ if st.session_state.get('processando', False):
                 "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto
             }
 
+    # --- 2. PREPARAÇÃO DOS DADOS ---
     df_corr_input = None
     if 'df_analise' in locals(): df_corr_input = df_analise.copy()
     elif 'df' in locals() and df is not None: df_corr_input = df.copy()
 
     if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
+        # Conversão forçada
         for col in lista_resps:
             try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
             except: pass 
@@ -2979,21 +2985,33 @@ if st.session_state.get('processando', False):
 
         if len(vars_corr) > 1:
             st.markdown("---")
+            # TÍTULO (Fica visível fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # ===> ABA MESTRA <===
+            # ===> AQUI ESTÁ A MUDANÇA: CRIAÇÃO DA ABA MESTRA <===
+            # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
             with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
-                cfg = mostrar_editor_heatmap("corr_main")
-                st.write("") 
                 
-                metodo_corr = st.radio("Método de Correlação:", ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], horizontal=True, index=1)
+                # 1. Editor Visual (Agora dentro da aba)
+                cfg = mostrar_editor_heatmap("corr_main")
+                
+                st.write("") # Espaço
+                
+                # 2. Seletor de Método (Agora dentro da aba)
+                metodo_corr = st.radio(
+                    "Método de Correlação:", 
+                    ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
+                    horizontal=True, index=1
+                )
                 metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
+                # 3. Avisos (Agora dentro da aba)
                 if metodo == "pearson":
                     st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
                 else:
                     st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
 
+                # 4. Botão (Agora dentro da aba)
                 if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                 
                 if not st.session_state['matriz_gerada']:
@@ -3001,9 +3019,11 @@ if st.session_state.get('processando', False):
                         st.session_state['matriz_gerada'] = True
                         st.rerun()
                 
+                # 5. Gráfico (Agora dentro da aba)
                 if st.session_state['matriz_gerada']:
                     try:
                         df_corr = df_corr_input[vars_corr].corr(method=metodo)
+                        
                         colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
                         custom_text = []
                         vals = df_corr.values
@@ -3020,7 +3040,10 @@ if st.session_state.get('processando', False):
                                 row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
                             custom_text.append(row_text)
 
-                        fig_corr = px.imshow(df_corr, text_auto=False, aspect="auto", color_continuous_scale=colorscale_custom, zmin=-1, zmax=1)
+                        fig_corr = px.imshow(
+                            df_corr, text_auto=False, aspect="auto",
+                            color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
+                        )
                         
                         mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                         show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
@@ -3040,6 +3063,7 @@ if st.session_state.get('processando', False):
 
                         st.plotly_chart(fig_corr, use_container_width=True)
                         st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+
                         st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
                         
                     except Exception as e:
@@ -3050,7 +3074,7 @@ if st.session_state.get('processando', False):
 
 
 # ==============================================================================
-# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - TUDO ENCAPSULADO
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - VISUAL LIMPO
 # ==============================================================================
 HAS_SKLEARN = False
 try:
@@ -3067,17 +3091,21 @@ except ImportError:
     except: HAS_SKLEARN = False
 
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
+    
     st.markdown("---")
+    # TÍTULO (Fica visível fora)
     st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
     # ===> ABA MESTRA PCA <===
     with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
+        
         if not HAS_SKLEARN:
             st.warning("⚠️ Biblioteca 'scikit-learn' não instalada. Instale via terminal.")
         else:
             with st.expander("ℹ️ Ajuda: O que é Biplot?", expanded=False):
                 st.info("O Biplot mostra a relação entre Tratamentos (Pontos) e Variáveis (Setas/Vetores).")
 
+            # Inputs agora DENTRO da aba
             c_pca1, c_pca2 = st.columns(2)
             with c_pca1:
                 col_rotulo_pca = st.selectbox("Rótulo dos Pontos", cols_trats, key="pca_lbl")
@@ -3134,14 +3162,16 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Gerador de Relatório Completo - TUDO ENCAPSULADO
+# 📂 BLOCO 22: Gerador de Relatório Completo - VISUAL LIMPO
 # ==============================================================================
 if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
     st.markdown("---")
+    # TÍTULO (Fica visível fora)
     st.markdown("### 📑 Central de Relatórios")
     
     # ===> ABA MESTRA RELATÓRIOS <===
     with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
+        
         st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
         st.info("Clique abaixo para gerar o arquivo completo para impressão.")
         
@@ -3200,7 +3230,6 @@ if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
 # ==============================================================================
 # 🏁 FIM DO BLOCO 22
 # ==============================================================================
-
 
 # ==============================================================================
 # 📂 BLOCO 23: Planejamento (Sorteio Experimental)
