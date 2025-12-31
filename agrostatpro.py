@@ -2936,7 +2936,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - ENCAPSULADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - TUDO ENCAPSULADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
@@ -2944,7 +2944,7 @@ if st.session_state.get('processando', False):
 
     # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
     def mostrar_editor_heatmap(key_prefix):
-        # Este expander ficará dentro da Aba Mestra (Aninhado)
+        # Este expander ficará aninhado dentro da Aba Mestra
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
             with st.form(key=f"form_{key_prefix}"):
                 st.markdown("##### 🎨 Aparência Geral")
@@ -3015,15 +3015,16 @@ if st.session_state.get('processando', False):
             # TÍTULO (Fica fora da aba)
             st.markdown("### 🔗 Análise de Correlação entre Variáveis")
             
-            # --- ABA MESTRA (AQUI ESTÁ A MUDANÇA PRINCIPAL) ---
-            # Tudo abaixo está indentado dentro deste with
+            # ===> ABA MESTRA (AQUI ESTÁ A CORREÇÃO DE INDENTAÇÃO) <===
+            # Tudo abaixo está dentro deste 'with'
             with st.expander("📊 Configurar e Visualizar Matriz de Correlação", expanded=False):
                 
-                # 1. Editor Visual (Gera o expander interno "Personalizar")
+                # 1. Editor Visual (Agora está dentro)
                 cfg = mostrar_editor_heatmap("corr_main")
                 
-                # 2. Seletor de Método
-                st.write("") # Espaçamento
+                st.write("") 
+                
+                # 2. Seletor de Método (Agora está dentro)
                 metodo_corr = st.radio(
                     "Método de Correlação:", 
                     ["Pearson (Paramétrico)", "Spearman (Não-Paramétrico)"], 
@@ -3031,12 +3032,13 @@ if st.session_state.get('processando', False):
                 )
                 metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
+                # 3. Avisos (Agora estão dentro)
                 if metodo == "pearson":
                     st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
                 else:
                     st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
 
-                # 3. Estado e Botão
+                # 4. Botão (Agora está dentro)
                 if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
                 
                 if not st.session_state['matriz_gerada']:
@@ -3044,7 +3046,7 @@ if st.session_state.get('processando', False):
                         st.session_state['matriz_gerada'] = True
                         st.rerun()
                 
-                # 4. Exibição do Gráfico (Dentro da Aba Mestra)
+                # 5. Gráfico (Agora está dentro)
                 if st.session_state['matriz_gerada']:
                     try:
                         df_corr = df_corr_input[vars_corr].corr(method=metodo)
@@ -3099,7 +3101,7 @@ if st.session_state.get('processando', False):
 
 
 # ==============================================================================
-# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - ENCAPSULADO
+# 📂 BLOCO 21-B: Análise de Componentes Principais (PCA) - TUDO ENCAPSULADO
 # ==============================================================================
 HAS_SKLEARN = False
 try:
@@ -3118,20 +3120,19 @@ except ImportError:
 if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) >= 2:
     
     st.markdown("---")
-    # TÍTULO (Fora da aba)
     st.markdown("### 🧬 Análise de Componentes Principais (PCA)")
     
-    # --- ABA MESTRA PCA ---
+    # ===> ABA MESTRA PCA (INDENTAÇÃO CORRIGIDA) <===
     with st.expander("🛠️ Configurar e Gerar Biplot PCA", expanded=False):
         
         if not HAS_SKLEARN:
             st.warning("⚠️ Biblioteca 'scikit-learn' não instalada. Instale via terminal.")
         else:
-            # Expander de Ajuda (Aninhado dentro da Aba Mestra)
             with st.expander("ℹ️ Ajuda: O que é Biplot?", expanded=False):
                 st.info("O Biplot mostra a relação entre Tratamentos (Pontos) e Variáveis (Setas/Vetores).")
 
             c_pca1, c_pca2 = st.columns(2)
+            # Elementos de interface AGORA DENTRO do expander principal
             with c_pca1:
                 col_rotulo_pca = st.selectbox("Rótulo dos Pontos", cols_trats, key="pca_lbl")
             with c_pca2:
@@ -3189,19 +3190,19 @@ if 'df_corr_input' in locals() and df_corr_input is not None and len(vars_corr) 
 
 
 # ==============================================================================
-# 📂 BLOCO 22: Gerador de Relatório Completo - ENCAPSULADO
+# 📂 BLOCO 22: Gerador de Relatório Completo - TUDO ENCAPSULADO
 # ==============================================================================
 if 'dados_para_relatorio_final' in locals() and dados_para_relatorio_final:
     st.markdown("---")
-    # TÍTULO (Fora da aba)
     st.markdown("### 📑 Central de Relatórios")
     
-    # --- ABA MESTRA RELATÓRIOS ---
+    # ===> ABA MESTRA RELATÓRIOS (INDENTAÇÃO CORRIGIDA) <===
     with st.expander("🖨️ Opções de Exportação e Download", expanded=True):
-        st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
-        st.info("O botão abaixo gera um relatório completo com **Gráficos, Tabelas e Laudos** que você pode salvar como PDF.")
         
-        # Funções auxiliares de HTML
+        # Conteúdo agora DENTRO do expander
+        st.success(f"✅ Processamento concluído de {len(dados_para_relatorio_final)} variáveis.")
+        st.info("Clique abaixo para gerar o arquivo completo para impressão.")
+        
         def fig_to_html(fig):
             if fig: return fig.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
             return "<div style='color:#999;'>Gráfico não disponível.</div>"
