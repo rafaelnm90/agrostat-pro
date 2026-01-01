@@ -2963,17 +2963,21 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - AUTOMATIZADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - CONTROLADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
-    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO (SEM FORMULÁRIO = REATIVO) ---
-    def mostrar_editor_heatmap(key_prefix):
+    # --- 1. FUNÇÃO DE PERSONALIZAÇÃO (LAYOUT LIVRE + CONTROLE DE ESTADO) ---
+    def mostrar_editor_heatmap_controlado(key_prefix):
+        # Inicializa o estado do gráfico se não existir
+        if f'fig_corr_{key_prefix}' not in st.session_state:
+            st.session_state[f'fig_corr_{key_prefix}'] = None
+
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
-            # --- REMOVIDO: st.form (Agora é interativo em tempo real) ---
             
+            # --- PARTE 1: APARÊNCIA GERAL (MAPA) ---
             st.markdown("##### 🎨 Aparência Geral")
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -2992,82 +2996,86 @@ if st.session_state.get('processando', False):
                 estilo_borda = st.selectbox("Bordas", ["Caixa (Espelhado)", "Apenas L (Eixos)", "Sem Bordas"], key=f"{key_prefix}_borda")
                 c3a, c3b = st.columns(2)
                 with c3a: mostrar_ticks = st.checkbox("Ticks", False, key=f"{key_prefix}_ticks")
-                with c3b: eixos_negrito = st.checkbox("Negrito", False, key=f"{key_prefix}_boldax")
+                with c3b: eixos_negrito = st.checkbox("Eixos Negrito", False, key=f"{key_prefix}_boldax")
 
             st.markdown("---")
-            st.markdown("##### 🔢 Valores (Texto)")
-            c4, c5, c6 = st.columns(3)
-            with c4:
-                # Como removemos o form, ao mudar este selectbox, o script roda e atualiza a coluna c6 imediatamente
-                modo_cor_txt = st.selectbox("Modo Cor", ["Cor Única", "Condicional"], key=f"{key_prefix}_modotxt")
-                tamanho_fonte_val = st.number_input("Tamanho", 8, 24, 12, key=f"{key_prefix}_fsize")
-            with c5:
-                val_negrito = st.checkbox("Valores Negrito", False, key=f"{key_prefix}_boldval")
-            
-            cores_texto = {}
-            with c6:
-                if modo_cor_txt == "Cor Única":
-                    cores_texto['unica'] = st.color_picker("Cor Única", "#000000", key=f"{key_prefix}_ctxtuni")
-                else:
-                    c6a, c6b = st.columns(2)
-                    with c6a: cores_texto['pos'] = st.color_picker("Pos", "#0000FF", key=f"{key_prefix}_ctxtpos")
-                    with c6b: cores_texto['neg'] = st.color_picker("Neg", "#FF0000", key=f"{key_prefix}_ctxtneg")
-                    cores_texto['zero'] = "#AAAAAA"
 
-            # --- REMOVIDO: Botão de submit (As alterações são imediatas) ---
+            # --- PARTE 2: VALORES DO TEXTO (LAYOUT SOLICITADO) ---
+            st.markdown("##### 🔢 Valores (Texto)")
+            
+            # Colunas: Modo | Tamanho | Negrito (Tudo na mesma linha)
+            c_txt1, c_txt2, c_txt3 = st.columns([1.5, 1, 1])
+            with c_txt1:
+                modo_cor_txt = st.selectbox("Modo de Cor", ["Cor Única", "Condicional"], key=f"{key_prefix}_modotxt")
+            with c_txt2:
+                tamanho_fonte_val = st.number_input("Tamanho Fonte", 8, 30, 14, key=f"{key_prefix}_fsize")
+            with c_txt3:
+                st.write("") 
+                st.write("") 
+                val_negrito = st.checkbox("Negrito (Valores)", False, key=f"{key_prefix}_boldval")
+
+            # --- PARTE 3: PALETA DE CORES DO TEXTO (DINÂMICA) ---
+            # Aparece imediatamente abaixo, sem precisar atualizar nada
+            cores_texto = {}
+            if modo_cor_txt == "Cor Única":
+                c_pal1, _ = st.columns([1, 2])
+                with c_pal1:
+                    cores_texto['unica'] = st.color_picker("Cor dos Números", "#000000", key=f"{key_prefix}_ctxtuni")
+            else:
+                c_pal1, c_pal2, c_pal3 = st.columns(3)
+                with c_pal1: cores_texto['pos'] = st.color_picker("Positivo (>0)", "#0000FF", key=f"{key_prefix}_ctxtpos")
+                with c_pal2: cores_texto['neg'] = st.color_picker("Negativo (<0)", "#FF0000", key=f"{key_prefix}_ctxtneg")
+                with c_pal3: cores_texto['zero'] = st.color_picker("Neutro (0)", "#AAAAAA", key=f"{key_prefix}_ctxtzero")
+
+            st.markdown("---")
+            
+            # --- BOTÃO ÚNICO DE AÇÃO ---
+            # Este botão dispara a flag para recriar o gráfico e salvar no session_state
+            btn_aplicar = st.button("🔄 Aplicar Todas as Alterações", key=f"btn_apply_{key_prefix}", type="primary")
 
             return {
                 "cor_mapa": [cor_neg, cor_zero, cor_pos], "cor_fundo": cor_fundo, "titulo": titulo_custom,
                 "fonte": fam_fonte, "cor_eixos": cor_eixos, "eixos_negrito": eixos_negrito,
                 "estilo_borda": estilo_borda, "ticks": mostrar_ticks, "modo_cor_txt": modo_cor_txt,
-                "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto
+                "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto,
+                "clicked": btn_aplicar
             }
 
     # --- 2. PREPARAÇÃO DOS DADOS (MODO AUTOMÁTICO) ---
-    # Verifica se temos dados coletados do loop
     if 'dados_para_correlacao_auto' in locals() and dados_para_correlacao_auto:
-        # Cria o DataFrame unindo todas as colunas transformadas/originais
-        # O Pandas alinhará automaticamente pelos índices das linhas
         df_corr_input = pd.DataFrame(dados_para_correlacao_auto)
-        
-        # Atualiza a lista de variáveis disponíveis para as colunas do novo DF
         vars_corr = list(df_corr_input.columns)
         
         st.markdown("---")
         st.markdown("### 🔗 Análise de Correlação (Dados Processados)")
         
-        # Aviso inteligente sobre o que está sendo usado
         cols_transformadas = [c for c in vars_corr if "_Log" in c or "_Sqrt" in c]
         if cols_transformadas:
-            st.info(f"✅ **Automação Ativa:** Utilizando dados transformados para: {', '.join(cols_transformadas)}. Isso permite o uso mais seguro de Pearson.")
+            st.info(f"✅ **Automação Ativa:** Utilizando dados transformados para: {', '.join(cols_transformadas)}.")
         else:
-            st.info("ℹ️ Utilizando dados originais (nenhuma transformação foi necessária/aplicada).")
+            st.info("ℹ️ Utilizando dados originais.")
 
     else:
-        # Fallback para o modo antigo se algo der errado
         if 'df_analise' in locals(): df_corr_input = df_analise.copy()
         elif 'df' in locals() and df is not None: df_corr_input = df.copy()
         
         if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
-            # Conversão forçada
             for col in lista_resps:
                 try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
                 except: pass 
-
             cols_numericas_corr = df_corr_input.select_dtypes(include=[np.number]).columns.tolist()
             vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
 
     if df_corr_input is not None and len(vars_corr) > 1:
         # ===> ABA MESTRA <===
-        # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
         with st.expander("🧩 Configurar e Visualizar Matriz de Correlação", expanded=False):
             
-            # 1. Editor Visual (Agora dentro da aba e REATIVO)
-            cfg = mostrar_editor_heatmap("corr_main")
+            # 1. Editor Visual (Chamada da função acima)
+            cfg = mostrar_editor_heatmap_controlado("corr_main")
             
-            st.write("") # Espaço
+            st.write("")
             
-            # 2. Seletor de Método (Spearman Primeiro)
+            # 2. Seletor de Método
             metodo_corr = st.radio(
                 "Método de Correlação:", 
                 ["Spearman (Não-Paramétrico)", "Pearson (Paramétrico)"], 
@@ -3075,37 +3083,35 @@ if st.session_state.get('processando', False):
             )
             metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
-            # 3. Avisos (Agora dentro da aba)
             if metodo == "pearson":
-                st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
+                st.warning("⚠️ **Atenção:** Pearson exige dados normais.")
             else:
-                st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
+                st.success("✅ **Recomendado:** Spearman é robusto para todos os dados.")
 
-            # 4. Botão (Agora dentro da aba)
-            if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
-            
-            if not st.session_state['matriz_gerada']:
-                if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
-                    st.session_state['matriz_gerada'] = True
-                    st.rerun()
-            
-            # 5. Gráfico (Agora dentro da aba)
-            if st.session_state['matriz_gerada']:
+            # 3. Lógica de Geração e Persistência
+            # Se o botão "Aplicar" foi clicado OU se nunca foi gerado antes
+            precisa_gerar = cfg['clicked'] or (st.session_state.get('fig_corr_corr_main') is None)
+
+            if precisa_gerar:
                 try:
                     df_corr = df_corr_input[vars_corr].corr(method=metodo)
                     
                     colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
+                    
+                    # Prepara textos e cores
                     custom_text = []
                     vals = df_corr.values
                     for i in range(len(vals)):
                         row_text = []
                         for val in vals[i]:
                             c_code = "#000000"
-                            if cfg['modo_cor_txt'] == "Cor Única": c_code = cfg['cores_texto']['unica']
+                            if cfg['modo_cor_txt'] == "Cor Única": 
+                                c_code = cfg['cores_texto'].get('unica', '#000000')
                             else:
                                 if val > 0.001: c_code = cfg['cores_texto'].get('pos', 'blue')
                                 elif val < -0.001: c_code = cfg['cores_texto'].get('neg', 'red')
-                                else: c_code = "#AAAAAA"
+                                else: c_code = cfg['cores_texto'].get('zero', '#AAAAAA')
+                            
                             val_fmt = f"<b>{val:.2f}</b>" if cfg['val_negrito'] else f"{val:.2f}"
                             row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
                         custom_text.append(row_text)
@@ -3118,26 +3124,54 @@ if st.session_state.get('processando', False):
                     mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
                     show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
                     tick_mode = "outside" if cfg['ticks'] else ""
-                    weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
+                    
+                    # Fonte dos Eixos (Correção: Aplicar Cor e Tamanho aqui também)
+                    weight_axis = "bold" if cfg['eixos_negrito'] else "normal"
+                    axis_font = dict(
+                        family=cfg['fonte'], 
+                        size=cfg['tamanho_fonte_val'], # Aplica o tamanho escolhido aos eixos também
+                        color=cfg['cor_eixos'],        # Aplica a cor escolhida aos eixos
+                        weight=weight_axis
+                    )
+
                     title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
                     
                     fig_corr.update_layout(
-                        title=dict(text=title_text, x=0.5, font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])),
-                        height=500, paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
+                        title=dict(text=title_text, x=0.5, font=dict(family=cfg['fonte'], size=cfg['tamanho_fonte_val']+4, color=cfg['cor_eixos'])),
+                        height=550, paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
                         font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
-                        xaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos)),
-                        yaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos))
+                        xaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=axis_font),
+                        yaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=axis_font)
                     )
+                    
                     fig_corr.update_coloraxes(showscale=False)
-                    fig_corr.update_traces(text=custom_text, texttemplate="%{text}")
+                    
+                    # Correção: Tamanho da fonte dos números dentro do mapa
+                    fig_corr.update_traces(
+                        text=custom_text, 
+                        texttemplate="%{text}",
+                        textfont=dict(size=cfg['tamanho_fonte_val'], family=cfg['fonte'])
+                    )
 
-                    st.plotly_chart(fig_corr, use_container_width=True)
-                    st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
-
-                    st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
+                    # Salva a figura pronta no estado
+                    st.session_state['fig_corr_corr_main'] = fig_corr
                     
                 except Exception as e:
                     st.error(f"Erro no cálculo: {e}")
+
+            # 4. Renderização (Sempre mostra o que está na memória)
+            if st.session_state.get('fig_corr_corr_main') is not None:
+                st.plotly_chart(st.session_state['fig_corr_corr_main'], use_container_width=True)
+                
+                # DataFrame estático (não depende de reprocessamento visual)
+                try:
+                    # Recalcula apenas o DF para mostrar a tabela (é rápido)
+                    df_view = df_corr_input[vars_corr].corr(method=metodo)
+                    st.dataframe(df_view.style.format("{:.2f}"), use_container_width=True)
+                except: pass
+
+                st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
+
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
