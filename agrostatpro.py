@@ -1843,7 +1843,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                                 # Define Sugestão baseada no Status (Dinâmica)
                                 def definir_sugestao(status_val):
                                     if "Variação Natural" in status_val: return "Manter Dado"
-                                    elif "Provável Erro" in status_val: return "Verificar Erro (Provável exclusão)"
+                                    elif "Provável Erro" in status_val: return "Verificar Erro (Provável Exclusão)"
                                     else: return "Analisar"
 
                                 df_show['Sugestao'] = df_show['Status'].apply(definir_sugestao)
