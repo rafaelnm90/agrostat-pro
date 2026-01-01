@@ -1806,12 +1806,14 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
                         """, icon="⚠️")
 
-                        # --- 2. AVISO AZUL (COMPLETO - FONTE NORMAL) ---
+                        # --- 2. AVISO AZUL (COMPLETO - METODOLOGIA HÍBRIDA) ---
                         st.info(f"""
-                        **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
+                        **🧠 Metodologia Híbrida (Dupla Checagem):** Utilizamos dois métodos combinados para diferenciar *Genética* de *Erro*:
                         
-                        ---
-                        **📉 Metodologia (IQR):** Valores considerados extremos são menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}**.
+                        1.  **Filtro de Seleção (IQR):** Primeiro, usamos o **Intervalo Interquartil** para detectar desvios visuais. Valores menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}** são capturados e listados abaixo.
+                        2.  **Classificação de Gravidade (Resíduos):** Em seguida, o **Resíduo Estudentizado** define o status.
+                            * **Resíduo ≤ 3 (🟢):** O dado é discrepante visualmente, mas o modelo estatístico consegue explicá-lo (Provável Variação Natural).
+                            * **Resíduo > 3 (🔴):** O dado desvia mais de 3 desvios-padrão. Há 99,7% de chance estatística de ser uma anomalia (Provável Erro).
                         """)
                         
                         tab_clean, tab_restore = st.tabs(["🧹 Limpar Novos", "♻️ Restaurar Removidos"])
