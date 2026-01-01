@@ -1683,6 +1683,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 
         # --- MEMÓRIA DO RELATÓRIO (CRUCIAL) ---
         dados_para_relatorio_final = [] 
+        
+        # [NOVO] MEMÓRIA PARA CORRELAÇÃO AUTOMÁTICA
+        # Vai guardar a versão final (transformada ou não) de cada variável para uso no Bloco 21
+        dados_para_correlacao_auto = {} 
         # ---------------------------------------
 
         for i, col_resp_original in enumerate(lista_resps):
@@ -1705,46 +1709,86 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 st.markdown(f"### Análise de: **{col_resp}**")
 
                 # ==============================================================================
-                # 🕵️ GESTÃO DE OUTLIERS (BLOCO 14.1 INTEGRADO)
+                # 🔄 PRÉ-CÁLCULO DO MODELO (Para Diagnóstico Inteligente)
                 # ==============================================================================
-                # Define a coluna de tratamento para este contexto
                 col_trat = col_combo
 
-                # 1. Inicialização da Memória de Exclusão (Lixeira)
+                # 1. Recupera Outliers Já Removidos (Memória)
                 key_outliers = f"outliers_removidos_{col_resp_original}_{i}"
-                
                 if key_outliers not in st.session_state:
                     st.session_state[key_outliers] = []
+                
+                # 2. Aplica Filtragem Temporária para Rodar o Modelo
+                indices_removidos = st.session_state[key_outliers]
+                df_calc_modelo = df_proc.drop(index=indices_removidos) if indices_removidos else df_proc
 
-                # 2. Detecção Estatística (IQR)
+                # 3. Roda a Análise (Antecipada) para obter Resíduos
+                res_model = None
+                anova_tab = None
+                extras = {} 
+                p_final_trat = 1.0 
+                razao_mse = None
+                residuos_map = {} 
+
+                try:
+                    if modo_analise == "INDIVIDUAL":
+                        res = rodar_analise_individual(df_calc_modelo, cols_trats, col_resp, delineamento, col_bloco)
+                        res_analysis = res 
+                        res_model = res['modelo']
+                        anova_tab = formatar_tabela_anova(res['anova'])
+                        p_final_trat = res['p_val']
+                        extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
+                    else: # CONJUNTA
+                        res_conj = rodar_analise_conjunta(df_calc_modelo, col_combo, col_resp, col_local, delineamento, col_bloco)
+                        res_analysis = res_conj
+                        res_model = res_conj['modelo']
+                        anova_tab = formatar_tabela_anova(res_conj['anova'])
+                        razao_mse, _, _ = calcular_homogeneidade(df_calc_modelo, col_combo, col_resp, col_local, col_bloco, delineamento)
+                        p_final_trat = res_conj['p_trat']
+                        extras = calcular_metricas_extras(anova_tab, res_model, col_combo)
+                    
+                    if res_model is not None:
+                        infl = res_model.get_influence()
+                        res_stud = infl.resid_studentized_internal
+                        residuos_map = pd.Series(res_stud, index=df_calc_modelo.index).to_dict()
+
+                except Exception as e:
+                    pass
+
+                # ==============================================================================
+                # 🕵️ GESTÃO DE OUTLIERS INTELIGENTE
+                # ==============================================================================
                 Q1 = df_proc[col_resp].quantile(0.25)
                 Q3 = df_proc[col_resp].quantile(0.75)
                 IQR = Q3 - Q1
                 limite_inferior = Q1 - 1.5 * IQR
                 limite_superior = Q3 + 1.5 * IQR
 
-                # Identifica quem está fora
                 mask_outliers = (df_proc[col_resp] < limite_inferior) | (df_proc[col_resp] > limite_superior)
                 df_outliers_detectados = df_proc[mask_outliers].copy()
-                
-                # Separa quem é novo (Ativo) e quem já foi removido
-                indices_removidos = st.session_state[key_outliers]
                 outliers_ativos = df_outliers_detectados.loc[~df_outliers_detectados.index.isin(indices_removidos)]
                 
-                # --- LÓGICA DE EXIBIÇÃO PERSISTENTE ---
-                # Mostra se houver outliers ativos OU se houver itens removidos (para restaurar)
                 if not outliers_ativos.empty or len(indices_removidos) > 0:
-                    
                     st.markdown("---")
-                    # Título de Alerta
+                    
+                    # Semáforo Inteligente
+                    qtd_criticos = 0
                     if not outliers_ativos.empty:
-                        st.error(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} valores fora do padrão. Analise com cuidado.")
+                        for idx in outliers_ativos.index:
+                            r_val = abs(residuos_map.get(idx, 0)) 
+                            if r_val > 3: qtd_criticos += 1
+                    
+                    if not outliers_ativos.empty:
+                        if qtd_criticos > 0:
+                            st.error(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} valores fora do padrão IQR. Desses, {qtd_criticos} são erros estatísticos graves (Resíduo > 3).")
+                        else:
+                            st.warning(f"AUDITORIA DE DADOS: Encontramos {len(outliers_ativos)} variações fora do padrão IQR. Porém, o modelo estatístico indica que provavelmente são Variações Naturais (Genética).")
                     else:
                         st.success(f"AUDITORIA DE DADOS: Dados limpos! ({len(indices_removidos)} valores removidos).")
 
                     with st.expander("🕵️ Gerenciar Outliers (Limpeza e Restauração)", expanded=True):
                         
-                        # --- 1. AVISO AMARELO (GUIA DE DECISÃO - RESTAURADO) ---
+                        # --- 1. AVISO AMARELO (COMPLETO) ---
                         st.warning("""
                         ### PARE E LEIA ANTES DE REMOVER!
                         A estatística aponta o que é *diferente*, não necessariamente o que é *errado*.
@@ -1762,7 +1806,7 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             * **Valores Impossíveis:** (Ex: Produtividade negativa, Altura zero).
                         """, icon="⚠️")
 
-                        # --- 2. AVISO AZUL (METODOLOGIA - RESTAURADO) ---
+                        # --- 2. AVISO AZUL (COMPLETO - FONTE NORMAL) ---
                         st.info(f"""
                         **🧠 Metodologia Utilizada:** Utilizamos o método estatístico do **Intervalo Interquartil (IQR)**. Calculamos a variação central dos dados (distância entre os 25% e 75%). Valores que se afastam mais de **1.5x** dessa distância são marcados como *Variação Alta*. Valores acima de **3.0x** são considerados *Extremos*.
                         
@@ -1770,42 +1814,61 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         **📉 Metodologia (IQR):** Valores considerados extremos são menores que **{limite_inferior:.4f}** ou maiores que **{limite_superior:.4f}**.
                         """)
                         
-                        st.markdown("---")
-                        
                         tab_clean, tab_restore = st.tabs(["🧹 Limpar Novos", "♻️ Restaurar Removidos"])
                         
                         # --- ABA 1: LIMPEZA ---
                         with tab_clean:
                             if not outliers_ativos.empty:
-                                # Recupera colunas de identificação (Tratamentos) e Valor
-                                cols_identificacao = cols_trats # Ex: ['Genotipo', 'Dose']
+                                cols_identificacao = cols_trats 
                                 cols_dados = [col_resp]
+                                if col_resp != col_resp_original: cols_dados = [col_resp_original, col_resp]
                                 
                                 df_show = outliers_ativos[cols_identificacao + cols_dados].copy()
                                 
-                                # 1. Diagnóstico e Sugestão
-                                df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo 📉' if x < limite_inferior else 'Muito Alto 📈')
-                                df_show['Sugestao'] = 'Verificar Erro' 
+                                # Inteligência (Lógica Unificada - Zero é Natural)
+                                def classificar_status(idx):
+                                    if idx not in residuos_map: return "⚪ Inconclusivo"
+                                    val = residuos_map[idx]
+                                    if pd.isna(val) or val == 0: return "🟢 Variação Natural"
+                                    
+                                    r_abs = abs(val)
+                                    if r_abs > 3: return "🔴 Provável Erro"
+                                    else: return "🟢 Variação Natural"
                                 
-                                # 2. Formatação precisa
-                                df_show['Valor Lido'] = df_show[col_resp].apply(lambda x: float(f"{x:.4f}"))
+                                # Aplica Status
+                                df_show['Status'] = [classificar_status(idx) for idx in df_show.index]
+                                
+                                # Define Sugestão baseada no Status (Dinâmica)
+                                def definir_sugestao(status_val):
+                                    if "Variação Natural" in status_val: return "Manter Dado"
+                                    elif "Provável Erro" in status_val: return "Verificar Erro"
+                                    else: return "Analisar"
+
+                                df_show['Sugestao'] = df_show['Status'].apply(definir_sugestao)
+                                
+                                df_show['Diagnostico'] = df_show[col_resp].apply(lambda x: 'Muito Baixo 📉' if x < limite_inferior else 'Muito Alto 📈')
+                                
+                                # Formatação e Renomeação da Coluna de Valor
+                                for c_dad in cols_dados:
+                                    nome_final = "Valor Lido" if c_dad == col_resp else "Valor Original"
+                                    df_show[nome_final] = df_show[c_dad].apply(lambda x: float(f"{x:.4f}"))
+                                    if c_dad != nome_final: del df_show[c_dad]
+
                                 df_show['Esperado (Faixa)'] = f"{limite_inferior:.4f} a {limite_superior:.4f}"
                                 df_show['Confirmar Remoção'] = False 
 
-                                # Define ordem: Identificação -> Valor -> Diagnóstico -> Sugestão -> Checkbox
-                                cols_order = cols_identificacao + ['Valor Lido', 'Esperado (Faixa)', 'Diagnostico', 'Sugestao', 'Confirmar Remoção']
+                                # ORDEM FINAL DAS COLUNAS
+                                cols_order = cols_identificacao.copy()
+                                if col_resp != col_resp_original: cols_order.append("Valor Original")
+                                cols_order.append("Valor Lido")
+                                cols_order.extend(['Esperado (Faixa)', 'Diagnostico', 'Status', 'Sugestao', 'Confirmar Remoção'])
                                 
+                                cols_disabled = [c for c in cols_order if c != 'Confirmar Remoção']
+
                                 edited_df = st.data_editor(
                                     df_show[cols_order],
-                                    column_config={
-                                        "Confirmar Remoção": st.column_config.CheckboxColumn(
-                                            "Remover?",
-                                            help="Marque para excluir este dado da análise",
-                                            default=False,
-                                        ),
-                                    },
-                                    # Bloqueia edição de tudo exceto o checkbox
-                                    disabled=cols_identificacao + ['Diagnostico', 'Sugestao', 'Valor Lido', 'Esperado (Faixa)'],
+                                    column_config={"Confirmar Remoção": st.column_config.CheckboxColumn("Remover?", default=False)},
+                                    disabled=cols_disabled,
                                     hide_index=True, 
                                     key=f"editor_out_{col_resp}_{i}"
                                 )
@@ -1822,16 +1885,13 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         with tab_restore:
                             if len(indices_removidos) > 0:
                                 st.warning("Estes dados foram excluídos da análise. Selecione para restaurar.")
-                                
                                 cols_identificacao = cols_trats
-                                df_removidos = df_proc.loc[indices_removidos, cols_identificacao + [col_resp]]
+                                df_removidos = df_proc.loc[indices_removidos, cols_identificacao + [col_resp_original]]
                                 df_removidos['Restaurar'] = False
                                 
                                 restore_editor = st.data_editor(
                                     df_removidos,
-                                    column_config={
-                                        "Restaurar": st.column_config.CheckboxColumn("Trazer de Volta?", default=False)
-                                    },
+                                    column_config={"Restaurar": st.column_config.CheckboxColumn("Trazer de Volta?", default=False)},
                                     key=f"editor_restore_{col_resp}_{i}"
                                 )
                                 
@@ -1849,87 +1909,40 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             else:
                                 st.write("A lixeira está vazia.")
 
-                # 3. FILTRAGEM FINAL DO DATAFRAME (Aplica a exclusão ANTES da análise)
-                if st.session_state[key_outliers]:
-                    df_proc = df_proc.drop(index=st.session_state[key_outliers])
-                    st.toast(f"Análise rodando sem {len(st.session_state[key_outliers])} outliers.", icon="🧹")
+                # ==============================================================================
+                # 🏁 FIM DO GESTOR DE OUTLIERS
                 # ==============================================================================
 
-                
-                # --- 1. EXECUÇÃO DOS CÁLCULOS ESTATÍSTICOS ---
-                res_analysis = {}
-                p_shap, p_bart, p_lev = None, None, None
-                res_model = None
-                anova_tab = None
-                extras = {} 
-                p_final_trat = 1.0 
-                
-                if modo_analise == "INDIVIDUAL":
-                    res = rodar_analise_individual(df_proc, cols_trats, col_resp, delineamento, col_bloco)
-                    res_analysis = res
-                    p_shap, p_bart, p_lev = res['shapiro'][1], res['bartlett'][1], res['levene'][1]
-                    res_model = res['modelo']
-                    anova_tab = formatar_tabela_anova(res['anova'])
-                    p_final_trat = res['p_val']
-                        
-                    extras = calcular_metricas_extras(anova_tab, res_model, cols_trats[0])
+                if res_model is not None:
                     st.markdown("#### 📝 Métricas Estatísticas")
-                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, cols_trats[0], df_proc[col_resp].mean(), p_final_trat)
+                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_final_trat, razao_mse)
                     st.markdown(txt_metrics)
+                    if razao_mse and razao_mse > 7: 
+                        st.error(f"⚠️ **Violação de Homogeneidade (MSE):** Razão {razao_mse:.2f} > 7. A variância entre os locais é muito discrepante.")
 
-                else: # CONJUNTA
-                    res_conj = rodar_analise_conjunta(df_proc, col_combo, col_resp, col_local, delineamento, col_bloco)
-                    res_analysis = res_conj
-                    p_shap, p_bart, p_lev = res_conj['shapiro'][1], res_conj['bartlett'][1], res_conj['levene'][1]
-                    res_model = res_conj['modelo']
-                    anova_tab = formatar_tabela_anova(res_conj['anova'])
-                    razao, _, _ = calcular_homogeneidade(df_proc, col_combo, col_resp, col_local, col_bloco, delineamento)
-                    p_final_trat = res_conj['p_trat']
-
-                    extras = calcular_metricas_extras(anova_tab, res_model, col_combo)
-                    st.markdown("#### 📝 Métricas Estatísticas")
-                    txt_metrics = gerar_relatorio_metricas(anova_tab, res_model, col_combo, df_proc[col_resp].mean(), p_final_trat, razao)
-                    st.markdown(txt_metrics)
-                    if razao and razao > 7: 
-                        st.error(f"⚠️ **Violação de Homogeneidade (MSE):** Razão {razao:.2f} > 7. A variância entre os locais é muito discrepante.")
-
-                # ==============================================================================
-                # 🚨 PAINEL DE ALERTAS (PADRÃO VERMELHO/ERRO PARA TUDO QUE FOR RUIM)
-                # ==============================================================================
-                cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
-                
-                # Container para agrupar avisos (Visualmente mais limpo)
-                with st.container():
-                    # 1. Alerta de CV (Agora sempre Vermelho se > 20)
-                    if cv_val > 30:
-                        st.error(f"⚠️ **CV Crítico ({cv_val:.2f}%):** Precisão experimental muito baixa. Dados inconsistentes.")
-                    elif cv_val > 20:
-                        st.error(f"⚠️ **CV Alto ({cv_val:.2f}%):** Precisão experimental reduzida. Atenção na interpretação.")
+                    # ==============================================================================
+                    # 🚨 PAINEL DE ALERTAS
+                    # ==============================================================================
+                    cv_val = (np.sqrt(res_model.mse_resid)/df_proc[col_resp].mean())*100
                     
-                    # 2. Alerta de ANOVA (P-valor)
-                    if p_final_trat > 0.05:
-                        st.error(f"⚠️ **ANOVA Não Significativa (P={p_final_trat:.4f}):** Não houve diferença estatística entre os tratamentos.")
+                    with st.container():
+                        if cv_val > 30: st.error(f"⚠️ **CV Crítico ({cv_val:.2f}%):** Precisão experimental muito baixa. Dados inconsistentes.")
+                        elif cv_val > 20: st.error(f"⚠️ **CV Alto ({cv_val:.2f}%):** Precisão experimental reduzida. Atenção na interpretação.")
+                        
+                        if p_final_trat > 0.05: st.error(f"⚠️ **ANOVA Não Significativa (P={p_final_trat:.4f}):** Não houve diferença estatística entre os tratamentos.")
 
-                    # 3. Alerta de R² (Agora sempre Vermelho se < 0.70)
-                    r2_val = extras.get('r2', 0)
-                    if r2_val < 0.50:
-                        st.error(f"⚠️ **R² Crítico ({r2_val:.2f}):** O modelo não se ajustou aos dados (Explica < 50%).")
-                    elif r2_val < 0.70:
-                        st.error(f"⚠️ **R² Regular ({r2_val:.2f}):** O ajuste do modelo está abaixo do ideal (< 0.70).")
+                        r2_val = extras.get('r2', 0)
+                        if r2_val < 0.50: st.error(f"⚠️ **R² Crítico ({r2_val:.2f}):** O modelo não se ajustou aos dados (Explica < 50%).")
+                        elif r2_val < 0.70: st.error(f"⚠️ **R² Regular ({r2_val:.2f}):** O ajuste do modelo está abaixo do ideal (< 0.70).")
 
-                    # 4. Alerta de Acurácia Seletiva (Agora sempre Vermelho se < 0.70)
-                    ac_val = extras.get('acuracia', 0)
-                    if ac_val > 0 and ac_val < 0.70:
-                        st.error(f"⚠️ **Acurácia Baixa ({ac_val:.2f}):** Baixa confiabilidade para seleção de genótipos.")
+                        ac_val = extras.get('acuracia', 0)
+                        if ac_val > 0 and ac_val < 0.70: st.error(f"⚠️ **Acurácia Baixa ({ac_val:.2f}):** Baixa confiabilidade para seleção de genótipos.")
 
-                    # 5. Alerta de Herdabilidade (Agora sempre Vermelho se < 0.50)
-                    h2_val = extras.get('h2', 0)
-                    if h2_val > 0 and h2_val < 0.50:
-                        st.error(f"⚠️ **Herdabilidade Baixa ({h2_val:.2f}):** Forte influência ambiental sobre a característica.")
-                
-                # Feedback Positivo Geral (Só aparece se estiver tudo "verde")
-                if cv_val <= 20 and p_final_trat < 0.05 and r2_val >= 0.70:
-                    st.success("✅ **Excelente:** Dados com alta precisão e modelo bem ajustado.")
+                        h2_val = extras.get('h2', 0)
+                        if h2_val > 0 and h2_val < 0.50: st.error(f"⚠️ **Herdabilidade Baixa ({h2_val:.2f}):** Forte influência ambiental sobre a característica.")
+                    
+                    if cv_val <= 20 and p_final_trat < 0.05 and r2_val >= 0.70:
+                        st.success("✅ **Excelente:** Dados com alta precisão e modelo bem ajustado.")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 14
 # ==============================================================================
@@ -1991,8 +2004,15 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
 # ==============================================================================
 # 📂 BLOCO 16: Árvore de Decisão Universal (Lógica de Pressupostos)
 # ==============================================================================
-                # Esta lógica agora se aplica tanto para DIC, DBC Individual quanto Conjunta.
-                # As variáveis p_shap, p_bart, p_lev foram definidas no Bloco 10.
+                # --- CORREÇÃO: Extração Explícita das Variáveis de Pressupostos ---
+                # Garante que as variáveis existam antes de chamar gerar_tabela_diagnostico
+                if 'res_analysis' in locals() and res_analysis is not None:
+                    # O dicionário retorna tuplas (Estatística, P-valor). Pegamos o índice [1]
+                    p_shap = res_analysis.get('shapiro', (0, np.nan))[1]
+                    p_bart = res_analysis.get('bartlett', (0, np.nan))[1]
+                    p_lev = res_analysis.get('levene', (0, np.nan))[1]
+                else:
+                    p_shap, p_bart, p_lev = np.nan, np.nan, np.nan
 
                 st.markdown("---")
                 st.markdown("#### 🩺 Diagnóstico dos Pressupostos")
@@ -2600,6 +2620,10 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                 grafico_final_obj = None 
                 tabela_final_obj = None
 
+                # Chave única para controlar o botão da Não-Paramétrica desta variável específica
+                key_run_np = f"run_np_manual_{col_resp}_{i}"
+                if key_run_np not in st.session_state: st.session_state[key_run_np] = False
+
                 # Tenta recuperar o critério de ordenação do estado GLOBAL
                 key_desc_glob = f"final_desc_{col_resp}_{i}"
                 if key_desc_glob in st.session_state:
@@ -2615,7 +2639,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         st.markdown("---"); st.markdown("### 🛡️ Solução Final: Análise Paramétrica (ANOVA)")
                         st.success(f"✅ **Transformação Eficaz!** Com **{transf_atual}**, os pressupostos foram atendidos.")
                         if st.button("Voltar ao Original", key=f"reset_success_{col_resp_original}"):
-                            set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
+                            set_transformacao(col_resp_original, "Nenhuma")
+                            st.session_state[key_run_np] = False # Reseta NP
+                            st.rerun()
                     
                     try:
                         medias_rep = df_proc.groupby(col_trat)[col_resp].mean()
@@ -2648,7 +2674,9 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                     if transf_atual == "Nenhuma":
                         st.info("💡 **Passo 1:** Tente transformar os dados para corrigir a normalidade/homogeneidade.")
                         if st.button("🧪 Tentar Transformação Log10", key=f"btn_log_{col_resp_original}", use_container_width=True):
-                            set_transformacao(col_resp_original, "Log10"); st.rerun()
+                            set_transformacao(col_resp_original, "Log10")
+                            st.session_state[key_run_np] = False # Garante que NP comece desligado
+                            st.rerun()
 
                     # --- ESTÁGIO 2: LOG10 FALHOU ---
                     elif transf_atual == "Log10":
@@ -2658,40 +2686,52 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         col_b1, col_b2 = st.columns(2)
                         with col_b1:
                             if st.button("🌱 Tentar Raiz Quadrada (SQRT)", key=f"btn_sqrt_{col_resp_original}", use_container_width=True):
-                                set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)"); st.rerun()
+                                set_transformacao(col_resp_original, "Raiz Quadrada (SQRT)")
+                                st.session_state[key_run_np] = False # Garante que NP comece desligado
+                                st.rerun()
                         with col_b2:
                             if st.button("↩️ Voltar ao Original", key=f"reset_log_{col_resp_original}", use_container_width=True):
-                                set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
+                                set_transformacao(col_resp_original, "Nenhuma")
+                                st.session_state[key_run_np] = False # Reseta NP
+                                st.rerun()
 
                     # --- ESTÁGIO 3: SQRT FALHOU (FIM DA LINHA) ---
                     elif transf_atual == "Raiz Quadrada (SQRT)":
                         st.error("❌ As transformações (Log10 e SQRT) **não funcionaram**.")
                         
-                        if st.button("↩️ Voltar ao Original (Reiniciar)", key=f"reset_final_np_{col_resp_original}"):
-                            set_transformacao(col_resp_original, "Nenhuma"); st.rerun()
-
-                        # --- AGORA SIM: TRAVA E AVISO EDUCATIVO ---
+                        # --- AGORA SIM: TEXTO COMBINADO (AUTORIDADE + TÉCNICO) ---
                         st.markdown("### 🛑 Decisão Necessária")
                         st.warning(f"""
                         ⚠️ **ATENÇÃO: Por que a Análise Não-Paramétrica é necessária?**
                         
-                        Os seus dados **não atenderam** aos pressupostos obrigatórios para a realização da ANOVA (Normalidade dos Resíduos e/ou Homogeneidade de Variâncias), mesmo após todas as tentativas de transformação disponíveis. Insistir na ANOVA aqui geraria conclusões científicas falsas.
+                        Os seus dados **não atenderam** aos pressupostos obrigatórios para a realização da ANOVA (Normalidade dos Resíduos e/ou Homogeneidade de Variâncias), mesmo após todas as tentativas de transformação disponíveis. 
+                        
+                        **Para prosseguir com validade científica, você deve autorizar a mudança para estatística Não-Paramétrica.** Insistir na ANOVA aqui geraria conclusões científicas falsas.
 
+                        ---
+                        
                         **Consequências da mudança:**
                         1.  **Foco:** A análise deixará de comparar **Médias** e passará a comparar **Medianas/Postos**.
                         2.  **Teste:** Será usado Kruskal-Wallis (DIC) ou Friedman (DBC).
                         3.  **Comparação:** O teste de médias (Tukey) será substituído pelo teste de **Dunn**.
                         """)
 
-                        # Estado do botão de execução da não-paramétrica
-                        key_run_np = f"run_np_manual_{col_resp}_{i}"
-                        if key_run_np not in st.session_state: st.session_state[key_run_np] = False
+                        # --- BOTÕES LADO A LADO (TRAVADOS ATÉ O CLIQUE) ---
+                        c_np1, c_np2 = st.columns(2)
+                        
+                        with c_np1:
+                            # O botão define a variável como True
+                            if st.button("🚀 Rodar Análise Não-Paramétrica", key=f"btn_trigger_np_{col_resp}_{i}", type="primary", use_container_width=True):
+                                st.session_state[key_run_np] = True
+                                st.rerun()
+                        
+                        with c_np2:
+                            if st.button("↩️ Voltar ao Original (Reiniciar)", key=f"reset_final_np_{col_resp_original}", use_container_width=True):
+                                set_transformacao(col_resp_original, "Nenhuma")
+                                st.session_state[key_run_np] = False # Reseta tudo
+                                st.rerun()
 
-                        if st.button("🚀 Rodar Análise Não-Paramétrica", key=f"btn_trigger_np_{col_resp}_{i}", type="primary", use_container_width=True):
-                            st.session_state[key_run_np] = True
-                            st.rerun()
-
-                        # --- EXECUÇÃO APÓS CLIQUE ---
+                        # --- EXECUÇÃO APÓS CLIQUE (SÓ RODA SE O BOTÃO TIVER SIDO ATIVADO) ---
                         if st.session_state[key_run_np]:
                             
                             st.markdown("---")
@@ -2715,7 +2755,6 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                             # ==============================================================================
                             # ⚙️ MENU DE CONFIGURAÇÃO (NÃO PARAMÉTRICO)
                             # ==============================================================================
-                            # Inicializa Estado para NP se não existir
                             if key_desc_glob not in st.session_state: st.session_state[key_desc_glob] = True
                             sort_desc_np_atual = st.session_state[key_desc_glob]
 
@@ -2913,64 +2952,69 @@ if st.session_state['processando'] and modo_app == "📊 Análise Estatística":
                         "grafico": grafico_final_obj,
                         "data_hora": pd.Timestamp.now().strftime('%d/%m/%Y')
                     })
+                    
+                    # [NOVO] CAPTURA PARA CORRELAÇÃO
+                    # Salva a série de dados EXATAMENTE como foi usada na análise (Log, Raiz ou Original)
+                    # O Pandas alinha pelo índice, então se houve remoção de outliers, ficará como NaN (correto)
+                    dados_para_correlacao_auto[col_resp] = df_proc[col_resp]
 # ==============================================================================
 # 🏁 FIM DO BLOCO 20
 # ==============================================================================
 
 
 # ==============================================================================
-# 📂 BLOCO 21: Análise de Correlação (Multivariada) - TUDO ENCAPSULADO
+# 📂 BLOCO 21: Análise de Correlação (Multivariada) - AUTOMATIZADO
 # ==============================================================================
 
 # TRAVA DE SEGURANÇA: O bloco só é lido se a análise principal já tiver rodado
 if st.session_state.get('processando', False):
 
-    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO ---
+    # --- 1. FUNÇÃO AUXILIAR DE PERSONALIZAÇÃO (SEM FORMULÁRIO = REATIVO) ---
     def mostrar_editor_heatmap(key_prefix):
-        # Este expander ficará dentro da aba principal (aninhado)
         with st.expander("✏️ Personalizar Cores e Layout", expanded=False):
-            with st.form(key=f"form_{key_prefix}"):
-                st.markdown("##### 🎨 Aparência Geral")
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.markdown("**Cores do Mapa**")
-                    cor_neg = st.color_picker("Valor -1", "#D73027", key=f"{key_prefix}_cneg")
-                    cor_zero = st.color_picker("Valor 0", "#FFFFFF", key=f"{key_prefix}_czero")
-                    cor_pos = st.color_picker("Valor 1", "#4575B4", key=f"{key_prefix}_cpos")
-                with c2:
-                    st.markdown("**Fundo e Eixos**")
-                    cor_fundo = st.color_picker("Fundo", "#FFFFFF", key=f"{key_prefix}_cbg")
-                    cor_eixos = st.color_picker("Texto/Eixos", "#000000", key=f"{key_prefix}_ceixos")
-                    fam_fonte = st.selectbox("Fonte", ["Arial", "Verdana", "Times New Roman", "Courier New"], key=f"{key_prefix}_font")
-                with c3:
-                    st.markdown("**Estrutura**")
-                    titulo_custom = st.text_input("Título", "Matriz de Correlação", key=f"{key_prefix}_tit")
-                    estilo_borda = st.selectbox("Bordas", ["Caixa (Espelhado)", "Apenas L (Eixos)", "Sem Bordas"], key=f"{key_prefix}_borda")
-                    c3a, c3b = st.columns(2)
-                    with c3a: mostrar_ticks = st.checkbox("Ticks", False, key=f"{key_prefix}_ticks")
-                    with c3b: eixos_negrito = st.checkbox("Negrito", False, key=f"{key_prefix}_boldax")
+            # --- REMOVIDO: st.form (Agora é interativo em tempo real) ---
+            
+            st.markdown("##### 🎨 Aparência Geral")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**Cores do Mapa**")
+                cor_neg = st.color_picker("Valor -1", "#D73027", key=f"{key_prefix}_cneg")
+                cor_zero = st.color_picker("Valor 0", "#FFFFFF", key=f"{key_prefix}_czero")
+                cor_pos = st.color_picker("Valor 1", "#4575B4", key=f"{key_prefix}_cpos")
+            with c2:
+                st.markdown("**Fundo e Eixos**")
+                cor_fundo = st.color_picker("Fundo", "#FFFFFF", key=f"{key_prefix}_cbg")
+                cor_eixos = st.color_picker("Texto/Eixos", "#000000", key=f"{key_prefix}_ceixos")
+                fam_fonte = st.selectbox("Fonte", ["Arial", "Verdana", "Times New Roman", "Courier New"], key=f"{key_prefix}_font")
+            with c3:
+                st.markdown("**Estrutura**")
+                titulo_custom = st.text_input("Título", "Matriz de Correlação", key=f"{key_prefix}_tit")
+                estilo_borda = st.selectbox("Bordas", ["Caixa (Espelhado)", "Apenas L (Eixos)", "Sem Bordas"], key=f"{key_prefix}_borda")
+                c3a, c3b = st.columns(2)
+                with c3a: mostrar_ticks = st.checkbox("Ticks", False, key=f"{key_prefix}_ticks")
+                with c3b: eixos_negrito = st.checkbox("Negrito", False, key=f"{key_prefix}_boldax")
 
-                st.markdown("---")
-                st.markdown("##### 🔢 Valores (Texto)")
-                c4, c5, c6 = st.columns(3)
-                with c4:
-                    modo_cor_txt = st.selectbox("Modo Cor", ["Cor Única", "Condicional"], key=f"{key_prefix}_modotxt")
-                    tamanho_fonte_val = st.number_input("Tamanho", 8, 24, 12, key=f"{key_prefix}_fsize")
-                with c5:
-                    val_negrito = st.checkbox("Valores Negrito", False, key=f"{key_prefix}_boldval")
-                
-                cores_texto = {}
-                with c6:
-                    if modo_cor_txt == "Cor Única":
-                        cores_texto['unica'] = st.color_picker("Cor Única", "#000000", key=f"{key_prefix}_ctxtuni")
-                    else:
-                        c6a, c6b = st.columns(2)
-                        with c6a: cores_texto['pos'] = st.color_picker("Pos", "#0000FF", key=f"{key_prefix}_ctxtpos")
-                        with c6b: cores_texto['neg'] = st.color_picker("Neg", "#FF0000", key=f"{key_prefix}_ctxtneg")
-                        cores_texto['zero'] = "#AAAAAA"
+            st.markdown("---")
+            st.markdown("##### 🔢 Valores (Texto)")
+            c4, c5, c6 = st.columns(3)
+            with c4:
+                # Como removemos o form, ao mudar este selectbox, o script roda e atualiza a coluna c6 imediatamente
+                modo_cor_txt = st.selectbox("Modo Cor", ["Cor Única", "Condicional"], key=f"{key_prefix}_modotxt")
+                tamanho_fonte_val = st.number_input("Tamanho", 8, 24, 12, key=f"{key_prefix}_fsize")
+            with c5:
+                val_negrito = st.checkbox("Valores Negrito", False, key=f"{key_prefix}_boldval")
+            
+            cores_texto = {}
+            with c6:
+                if modo_cor_txt == "Cor Única":
+                    cores_texto['unica'] = st.color_picker("Cor Única", "#000000", key=f"{key_prefix}_ctxtuni")
+                else:
+                    c6a, c6b = st.columns(2)
+                    with c6a: cores_texto['pos'] = st.color_picker("Pos", "#0000FF", key=f"{key_prefix}_ctxtpos")
+                    with c6b: cores_texto['neg'] = st.color_picker("Neg", "#FF0000", key=f"{key_prefix}_ctxtneg")
+                    cores_texto['zero'] = "#AAAAAA"
 
-                st.markdown("---")
-                st.form_submit_button("🔄 Atualizar Visual")
+            # --- REMOVIDO: Botão de submit (As alterações são imediatas) ---
 
             return {
                 "cor_mapa": [cor_neg, cor_zero, cor_pos], "cor_fundo": cor_fundo, "titulo": titulo_custom,
@@ -2979,105 +3023,121 @@ if st.session_state.get('processando', False):
                 "tamanho_fonte_val": tamanho_fonte_val, "val_negrito": val_negrito, "cores_texto": cores_texto
             }
 
-    # --- 2. PREPARAÇÃO DOS DADOS ---
-    df_corr_input = None
-    if 'df_analise' in locals(): df_corr_input = df_analise.copy()
-    elif 'df' in locals() and df is not None: df_corr_input = df.copy()
+    # --- 2. PREPARAÇÃO DOS DADOS (MODO AUTOMÁTICO) ---
+    # Verifica se temos dados coletados do loop
+    if 'dados_para_correlacao_auto' in locals() and dados_para_correlacao_auto:
+        # Cria o DataFrame unindo todas as colunas transformadas/originais
+        # O Pandas alinhará automaticamente pelos índices das linhas
+        df_corr_input = pd.DataFrame(dados_para_correlacao_auto)
+        
+        # Atualiza a lista de variáveis disponíveis para as colunas do novo DF
+        vars_corr = list(df_corr_input.columns)
+        
+        st.markdown("---")
+        st.markdown("### 🔗 Análise de Correlação (Dados Processados)")
+        
+        # Aviso inteligente sobre o que está sendo usado
+        cols_transformadas = [c for c in vars_corr if "_Log" in c or "_Sqrt" in c]
+        if cols_transformadas:
+            st.info(f"✅ **Automação Ativa:** Utilizando dados transformados para: {', '.join(cols_transformadas)}. Isso permite o uso mais seguro de Pearson.")
+        else:
+            st.info("ℹ️ Utilizando dados originais (nenhuma transformação foi necessária/aplicada).")
 
-    if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
-        # Conversão forçada
-        for col in lista_resps:
-            try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
-            except: pass 
+    else:
+        # Fallback para o modo antigo se algo der errado
+        if 'df_analise' in locals(): df_corr_input = df_analise.copy()
+        elif 'df' in locals() and df is not None: df_corr_input = df.copy()
+        
+        if df_corr_input is not None and 'lista_resps' in locals() and lista_resps:
+            # Conversão forçada
+            for col in lista_resps:
+                try: df_corr_input[col] = limpar_e_converter_dados(df_corr_input, col)
+                except: pass 
 
-        cols_numericas_corr = df_corr_input.select_dtypes(include=[np.number]).columns.tolist()
-        vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
+            cols_numericas_corr = df_corr_input.select_dtypes(include=[np.number]).columns.tolist()
+            vars_corr = [v for v in lista_resps if v in cols_numericas_corr]
 
-        if len(vars_corr) > 1:
-            st.markdown("---")
-            # TÍTULO (Fica visível fora da aba)
-            st.markdown("### 🔗 Análise de Correlação entre Variáveis")
+    if df_corr_input is not None and len(vars_corr) > 1:
+        # ===> ABA MESTRA <===
+        # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
+        with st.expander("🧩 Configurar e Visualizar Matriz de Correlação", expanded=False):
             
-            # ===> ABA MESTRA <===
-            # Todo o conteúdo abaixo está recuado para ficar dentro desta caixa
-            with st.expander("🧩 Configurar e Visualizar Matriz de Correlação", expanded=False):
-                
-                # 1. Editor Visual (Agora dentro da aba)
-                cfg = mostrar_editor_heatmap("corr_main")
-                
-                st.write("") # Espaço
-                
-                # 2. Seletor de Método (Spearman Primeiro)
-                metodo_corr = st.radio(
-                    "Método de Correlação:", 
-                    ["Spearman (Não-Paramétrico)", "Pearson (Paramétrico)"], 
-                    horizontal=True, index=0
-                )
-                metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
+            # 1. Editor Visual (Agora dentro da aba e REATIVO)
+            cfg = mostrar_editor_heatmap("corr_main")
+            
+            st.write("") # Espaço
+            
+            # 2. Seletor de Método (Spearman Primeiro)
+            metodo_corr = st.radio(
+                "Método de Correlação:", 
+                ["Spearman (Não-Paramétrico)", "Pearson (Paramétrico)"], 
+                horizontal=True, index=0
+            )
+            metodo = "pearson" if "Pearson" in metodo_corr else "spearman"
 
-                # 3. Avisos (Agora dentro da aba)
-                if metodo == "pearson":
-                    st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
-                else:
-                    st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
+            # 3. Avisos (Agora dentro da aba)
+            if metodo == "pearson":
+                st.warning("⚠️ **Atenção:** Pearson exige dados normais. Para dados não-paramétricos, prefira Spearman.")
+            else:
+                st.success("✅ **Ótima escolha:** O método de **Spearman** (correlação de postos) é robusto e adequado tanto para dados normais quanto para dados não-paramétricos.")
 
-                # 4. Botão (Agora dentro da aba)
-                if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
-                
-                if not st.session_state['matriz_gerada']:
-                    if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
-                        st.session_state['matriz_gerada'] = True
-                        st.rerun()
-                
-                # 5. Gráfico (Agora dentro da aba)
-                if st.session_state['matriz_gerada']:
-                    try:
-                        df_corr = df_corr_input[vars_corr].corr(method=metodo)
-                        
-                        colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
-                        custom_text = []
-                        vals = df_corr.values
-                        for i in range(len(vals)):
-                            row_text = []
-                            for val in vals[i]:
-                                c_code = "#000000"
-                                if cfg['modo_cor_txt'] == "Cor Única": c_code = cfg['cores_texto']['unica']
-                                else:
-                                    if val > 0.001: c_code = cfg['cores_texto'].get('pos', 'blue')
-                                    elif val < -0.001: c_code = cfg['cores_texto'].get('neg', 'red')
-                                    else: c_code = "#AAAAAA"
-                                val_fmt = f"<b>{val:.2f}</b>" if cfg['val_negrito'] else f"{val:.2f}"
-                                row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
-                            custom_text.append(row_text)
+            # 4. Botão (Agora dentro da aba)
+            if 'matriz_gerada' not in st.session_state: st.session_state['matriz_gerada'] = False
+            
+            if not st.session_state['matriz_gerada']:
+                if st.button("🔄 Gerar Gráfico de Correlação", type="primary"):
+                    st.session_state['matriz_gerada'] = True
+                    st.rerun()
+            
+            # 5. Gráfico (Agora dentro da aba)
+            if st.session_state['matriz_gerada']:
+                try:
+                    df_corr = df_corr_input[vars_corr].corr(method=metodo)
+                    
+                    colorscale_custom = [[0.0, cfg['cor_mapa'][0]], [0.5, cfg['cor_mapa'][1]], [1.0, cfg['cor_mapa'][2]]]
+                    custom_text = []
+                    vals = df_corr.values
+                    for i in range(len(vals)):
+                        row_text = []
+                        for val in vals[i]:
+                            c_code = "#000000"
+                            if cfg['modo_cor_txt'] == "Cor Única": c_code = cfg['cores_texto']['unica']
+                            else:
+                                if val > 0.001: c_code = cfg['cores_texto'].get('pos', 'blue')
+                                elif val < -0.001: c_code = cfg['cores_texto'].get('neg', 'red')
+                                else: c_code = "#AAAAAA"
+                            val_fmt = f"<b>{val:.2f}</b>" if cfg['val_negrito'] else f"{val:.2f}"
+                            row_text.append(f"<span style='color:{c_code}'>{val_fmt}</span>")
+                        custom_text.append(row_text)
 
-                        fig_corr = px.imshow(
-                            df_corr, text_auto=False, aspect="auto",
-                            color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
-                        )
-                        
-                        mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
-                        show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
-                        tick_mode = "outside" if cfg['ticks'] else ""
-                        weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
-                        title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
-                        
-                        fig_corr.update_layout(
-                            title=dict(text=title_text, x=0.5, font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])),
-                            height=500, paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
-                            font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
-                            xaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos)),
-                            yaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos))
-                        )
-                        fig_corr.update_coloraxes(showscale=False)
-                        fig_corr.update_traces(text=custom_text, texttemplate="%{text}")
+                    fig_corr = px.imshow(
+                        df_corr, text_auto=False, aspect="auto",
+                        color_continuous_scale=colorscale_custom, zmin=-1, zmax=1
+                    )
+                    
+                    mirror_bool = True if cfg['estilo_borda'] == "Caixa (Espelhado)" else False
+                    show_line = False if cfg['estilo_borda'] == "Sem Bordas" else True
+                    tick_mode = "outside" if cfg['ticks'] else ""
+                    weight_eixos = "bold" if cfg['eixos_negrito'] else "normal"
+                    title_text = f"<b>{cfg['titulo']}</b>" if cfg['eixos_negrito'] else cfg['titulo']
+                    
+                    fig_corr.update_layout(
+                        title=dict(text=title_text, x=0.5, font=dict(family=cfg['fonte'], size=18, color=cfg['cor_eixos'])),
+                        height=500, paper_bgcolor=cfg['cor_fundo'], plot_bgcolor=cfg['cor_fundo'],
+                        font=dict(family=cfg['fonte'], color=cfg['cor_eixos']),
+                        xaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos)),
+                        yaxis=dict(showline=show_line, mirror=mirror_bool, linecolor=cfg['cor_eixos'], ticks=tick_mode, tickfont=dict(weight=weight_eixos))
+                    )
+                    fig_corr.update_coloraxes(showscale=False)
+                    fig_corr.update_traces(text=custom_text, texttemplate="%{text}")
 
-                        st.plotly_chart(fig_corr, use_container_width=True)
-                        st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
+                    st.plotly_chart(fig_corr, use_container_width=True)
+                    st.dataframe(df_corr.style.format("{:.2f}"), use_container_width=True)
 
-                        st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
-                        
-                    except Exception as e:
-                        st.error(f"Erro no cálculo: {e}")
+                    st.caption("Nota: Valores próximos a +1 indicam correlação positiva; -1 indica negativa.")
+                    
+                except Exception as e:
+                    st.error(f"Erro no cálculo: {e}")
 # ==============================================================================
 # 🏁 FIM DO BLOCO 21
 # ==============================================================================
