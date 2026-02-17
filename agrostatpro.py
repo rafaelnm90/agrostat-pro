@@ -3541,7 +3541,7 @@ st.markdown(
     <div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 20px;">
         <hr style="margin-bottom: 15px; border-top: 1px solid #eee;">
         Developed by <b>Rafael Novais de Miranda</b><br>
-        📧 rafaelnovaismiranda@gmail.com | 📱 +55 (34) 9.99777-9966
+        📧 rafaelnovaismiranda@gmail.com
     </div>
     """,
     unsafe_allow_html=True
